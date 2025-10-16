@@ -1,36 +1,148 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# API Platform
+
+A minimalistic API product built with Next.js, TypeScript, and PostgreSQL. Users can sign up, manage API keys, track credits, and make API calls with usage-based billing.
+
+## Features
+
+- User authentication (signup/signin) with NextAuth.js
+- API key generation and management
+- Credit-based API usage tracking
+- Stripe integration for purchasing credits
+- Simple "Hello World" API endpoint
+- Responsive dashboard UI
+
+## Tech Stack
+
+- **Framework**: Next.js 15 with App Router
+- **Language**: TypeScript
+- **Database**: PostgreSQL with Prisma ORM
+- **Authentication**: NextAuth.js
+- **Payments**: Stripe
+- **Styling**: Tailwind CSS
 
 ## Getting Started
 
-First, run the development server:
+### Prerequisites
 
+- Node.js 18+ installed
+- PostgreSQL database (or use Prisma's hosted database)
+- Stripe account for payments
+
+### Installation
+
+1. Clone the repository:
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+git clone <your-repo-url>
+cd api-platform
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+2. Install dependencies:
+```bash
+npm install
+```
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+3. Set up environment variables:
+Create a `.env` file in the root directory with the following:
+```env
+DATABASE_URL="your_postgresql_connection_string"
+NEXTAUTH_SECRET="your_secret_key"
+NEXTAUTH_URL="http://localhost:3000"
+STRIPE_SECRET_KEY="sk_test_your_stripe_key"
+STRIPE_PUBLISHABLE_KEY="pk_test_your_stripe_key"
+STRIPE_WEBHOOK_SECRET="whsec_your_webhook_secret"
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+4. Run database migrations:
+```bash
+npx prisma migrate dev
+npx prisma generate
+```
 
-## Learn More
+5. Start the development server:
+```bash
+npm run dev
+```
 
-To learn more about Next.js, take a look at the following resources:
+6. Open [http://localhost:3000](http://localhost:3000) in your browser
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Project Structure
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+```
+api-platform/
+├── app/
+│   ├── api/              # API routes
+│   │   ├── auth/         # Authentication endpoints
+│   │   ├── keys/         # API key management
+│   │   ├── billing/      # Stripe integration
+│   │   ├── user/         # User data endpoints
+│   │   └── v1/           # Versioned API endpoints
+│   ├── auth/             # Auth pages (signin/signup)
+│   ├── dashboard/        # Dashboard page
+│   └── layout.tsx        # Root layout
+├── components/           # React components
+├── lib/                  # Utility libraries
+├── prisma/               # Database schema
+└── types/                # TypeScript types
+```
 
-## Deploy on Vercel
+## API Usage
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+### Authentication
+1. Sign up at `/auth/signup`
+2. Sign in at `/auth/signin`
+3. Access dashboard at `/dashboard`
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+### API Key Management
+- Create API keys from the dashboard
+- Copy and use in your API requests
+
+### Making API Calls
+
+```bash
+curl -X GET http://localhost:3000/api/v1/hello \
+  -H "x-api-key: YOUR_API_KEY"
+```
+
+Response:
+```json
+{
+  "message": "Hello World",
+  "creditsRemaining": 99
+}
+```
+
+Each API call consumes 1 credit.
+
+## Database Schema
+
+- **User**: Stores user information, email, password hash, and credit balance
+- **ApiKey**: API keys associated with users
+- **Transaction**: Tracks all credit purchases and API usage
+
+## Development
+
+### Running Migrations
+```bash
+npx prisma migrate dev --name migration_name
+```
+
+### Generating Prisma Client
+```bash
+npx prisma generate
+```
+
+### Viewing Database
+```bash
+npx prisma studio
+```
+
+## Deployment
+
+1. Deploy to Vercel or your preferred platform
+2. Set up environment variables
+3. Run database migrations in production
+4. Configure Stripe webhook endpoint
+
+## License
+
+MIT
