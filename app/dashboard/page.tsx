@@ -100,7 +100,7 @@ export default function DashboardPage() {
   }
 
   if (status === "loading") {
-    return <div className="min-h-screen flex items-center justify-center">Loading...</div>
+    return <div className="min-h-screen flex items-center justify-center text-gray-900">Loading...</div>
   }
 
   if (!session) {
@@ -113,13 +113,13 @@ export default function DashboardPage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16">
             <div className="flex items-center">
-              <h1 className="text-xl font-bold">API Platform</h1>
+              <h1 className="text-xl font-bold text-gray-900">API Platform</h1>
             </div>
             <div className="flex items-center space-x-4">
-              <span className="text-sm text-gray-700">{session.user.email}</span>
+              <span className="text-sm text-gray-900">{session.user.email}</span>
               <button
                 onClick={() => signOut({ callbackUrl: "/auth/signin" })}
-                className="text-sm text-gray-700 hover:text-gray-900"
+                className="text-sm text-gray-900 hover:text-gray-700 font-medium"
               >
                 Sign out
               </button>
@@ -131,29 +131,29 @@ export default function DashboardPage() {
       <div className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
         <div className="px-4 py-6 sm:px-0">
           <div className="bg-white shadow rounded-lg p-6 mb-6">
-            <h2 className="text-2xl font-bold mb-4">Account Overview</h2>
+            <h2 className="text-2xl font-bold mb-4 text-gray-900">Account Overview</h2>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="bg-blue-50 p-4 rounded">
-                <p className="text-sm text-gray-600">Credits Remaining</p>
-                <p className="text-3xl font-bold text-blue-600">{user?.credits || 0}</p>
+                <p className="text-sm text-gray-700 font-medium">Credits Remaining</p>
+                <p className="text-3xl font-bold text-blue-700">{user?.credits || 0}</p>
               </div>
               <div className="bg-green-50 p-4 rounded">
-                <p className="text-sm text-gray-600">Active API Keys</p>
-                <p className="text-3xl font-bold text-green-600">{apiKeys.length}</p>
+                <p className="text-sm text-gray-700 font-medium">Active API Keys</p>
+                <p className="text-3xl font-bold text-green-700">{apiKeys.length}</p>
               </div>
               <div className="bg-purple-50 p-4 rounded">
-                <p className="text-sm text-gray-600">Account Email</p>
-                <p className="text-sm font-medium text-purple-600 truncate">{user?.email}</p>
+                <p className="text-sm text-gray-700 font-medium">Account Email</p>
+                <p className="text-sm font-medium text-purple-700 truncate">{user?.email}</p>
               </div>
             </div>
           </div>
 
           <div className="bg-white shadow rounded-lg p-6">
             <div className="flex justify-between items-center mb-4">
-              <h2 className="text-2xl font-bold">API Keys</h2>
+              <h2 className="text-2xl font-bold text-gray-900">API Keys</h2>
               <button
                 onClick={() => setShowNewKeyForm(!showNewKeyForm)}
-                className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+                className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 font-medium"
               >
                 Create New Key
               </button>
@@ -168,19 +168,19 @@ export default function DashboardPage() {
                     onChange={(e) => setNewKeyName(e.target.value)}
                     placeholder="API Key Name"
                     required
-                    className="flex-1 px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                    className="flex-1 px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-gray-900"
                   />
                   <button
                     type="submit"
                     disabled={loading}
-                    className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+                    className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 font-medium"
                   >
                     {loading ? "Creating..." : "Create"}
                   </button>
                   <button
                     type="button"
                     onClick={() => setShowNewKeyForm(false)}
-                    className="px-4 py-2 bg-gray-300 text-gray-700 rounded hover:bg-gray-400"
+                    className="px-4 py-2 bg-gray-300 text-gray-900 rounded hover:bg-gray-400 font-medium"
                   >
                     Cancel
                   </button>
@@ -189,33 +189,33 @@ export default function DashboardPage() {
             )}
 
             {apiKeys.length === 0 ? (
-              <p className="text-gray-500 text-center py-8">No API keys yet. Create one to get started!</p>
+              <p className="text-gray-600 text-center py-8">No API keys yet. Create one to get started!</p>
             ) : (
               <div className="space-y-4">
                 {apiKeys.map((key) => (
                   <div key={key.id} className="border border-gray-200 rounded-lg p-4">
                     <div className="flex justify-between items-start">
                       <div className="flex-1">
-                        <h3 className="font-semibold text-lg">{key.name}</h3>
+                        <h3 className="font-semibold text-lg text-gray-900">{key.name}</h3>
                         <div className="mt-2 flex items-center space-x-2">
-                          <code className="bg-gray-100 px-3 py-1 rounded text-sm font-mono">
+                          <code className="bg-gray-100 px-3 py-1 rounded text-sm font-mono text-gray-900">
                             {key.key}
                           </code>
                           <button
                             onClick={() => copyToClipboard(key.key)}
-                            className="text-blue-600 hover:text-blue-700 text-sm"
+                            className="text-blue-600 hover:text-blue-700 text-sm font-medium"
                           >
                             Copy
                           </button>
                         </div>
-                        <p className="text-sm text-gray-500 mt-2">
+                        <p className="text-sm text-gray-600 mt-2">
                           Created: {new Date(key.createdAt).toLocaleDateString()}
                           {key.lastUsed && ` | Last used: ${new Date(key.lastUsed).toLocaleDateString()}`}
                         </p>
                       </div>
                       <button
                         onClick={() => deleteApiKey(key.id)}
-                        className="ml-4 text-red-600 hover:text-red-700"
+                        className="ml-4 text-red-600 hover:text-red-700 font-medium"
                       >
                         Delete
                       </button>
@@ -227,22 +227,22 @@ export default function DashboardPage() {
           </div>
 
           <div className="bg-white shadow rounded-lg p-6 mt-6">
-            <h2 className="text-2xl font-bold mb-4">API Documentation</h2>
+            <h2 className="text-2xl font-bold mb-4 text-gray-900">API Documentation</h2>
             <div className="prose max-w-none">
-              <h3 className="text-lg font-semibold">Hello World Endpoint</h3>
-              <p className="text-sm text-gray-600">Make a GET request to test your API key:</p>
-              <pre className="bg-gray-100 p-4 rounded text-sm overflow-x-auto">
+              <h3 className="text-lg font-semibold text-gray-900">Hello World Endpoint</h3>
+              <p className="text-sm text-gray-700 mt-2">Make a GET request to test your API key:</p>
+              <pre className="bg-gray-100 p-4 rounded text-sm overflow-x-auto text-gray-900 mt-3">
 {`curl -X GET https://your-domain.com/api/v1/hello \\
   -H "x-api-key: YOUR_API_KEY"`}
               </pre>
-              <p className="text-sm text-gray-600 mt-2">Response:</p>
-              <pre className="bg-gray-100 p-4 rounded text-sm">
+              <p className="text-sm text-gray-700 mt-3">Response:</p>
+              <pre className="bg-gray-100 p-4 rounded text-sm text-gray-900 mt-2">
 {`{
   "message": "Hello World",
   "creditsRemaining": 99
 }`}
               </pre>
-              <p className="text-xs text-gray-500 mt-2">Each API call consumes 1 credit.</p>
+              <p className="text-sm text-gray-600 mt-3">Each API call consumes 1 credit.</p>
             </div>
           </div>
         </div>
