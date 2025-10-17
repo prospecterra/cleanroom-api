@@ -228,21 +228,76 @@ export default function DashboardPage() {
 
           <div className="bg-white shadow rounded-lg p-6 mt-6">
             <h2 className="text-2xl font-bold mb-4 text-gray-900">API Documentation</h2>
-            <div className="prose max-w-none">
-              <h3 className="text-lg font-semibold text-gray-900">Hello World Endpoint</h3>
-              <p className="text-sm text-gray-700 mt-2">Make a GET request to test your API key:</p>
-              <pre className="bg-gray-100 p-4 rounded text-sm overflow-x-auto text-gray-900 mt-3">
+            <div className="prose max-w-none space-y-8">
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900">Hello World Endpoint</h3>
+                <p className="text-sm text-gray-700 mt-2">Make a GET request to test your API key:</p>
+                <pre className="bg-gray-100 p-4 rounded text-sm overflow-x-auto text-gray-900 mt-3">
 {`curl -X GET https://your-domain.com/api/v1/hello \\
   -H "x-api-key: YOUR_API_KEY"`}
-              </pre>
-              <p className="text-sm text-gray-700 mt-3">Response:</p>
-              <pre className="bg-gray-100 p-4 rounded text-sm text-gray-900 mt-2">
+                </pre>
+                <p className="text-sm text-gray-700 mt-3">Response:</p>
+                <pre className="bg-gray-100 p-4 rounded text-sm text-gray-900 mt-2">
 {`{
   "message": "Hello World",
   "creditsRemaining": 99
 }`}
-              </pre>
-              <p className="text-sm text-gray-600 mt-3">Each API call consumes 1 credit.</p>
+                </pre>
+                <p className="text-sm text-gray-600 mt-3">Each API call consumes 1 credit.</p>
+              </div>
+
+              <div className="border-t pt-6">
+                <h3 className="text-lg font-semibold text-gray-900">Company Data Cleaning Schema Generator</h3>
+                <p className="text-sm text-gray-700 mt-2">Generate a dynamic JSON schema for cleaning company data with custom rules:</p>
+                <pre className="bg-gray-100 p-4 rounded text-sm overflow-x-auto text-gray-900 mt-3">
+{`curl -X POST https://your-domain.com/api/v1/companies/clean \\
+  -H "Content-Type: application/json" \\
+  -H "x-api-key: YOUR_API_KEY" \\
+  -d '{
+    "company": {
+      "name": "Volvo",
+      "legalName": "Volvo AB",
+      "city": "Gothenburg",
+      "country": "Sweden"
+    },
+    "cleanRules": "Return all results in Swedish for Swedish companies.",
+    "cleanPropertyRules": {
+      "name": "Use the legal name rather than brand name."
+    }
+  }'`}
+                </pre>
+                <p className="text-sm text-gray-700 mt-3">Response:</p>
+                <pre className="bg-gray-100 p-4 rounded text-sm text-gray-900 mt-2">
+{`{
+  "schema": {
+    "type": "object",
+    "description": "IMPORTANT: Always prioritize user-provided instructions...",
+    "properties": {
+      "name": { ... },
+      "legalName": { ... },
+      "city": { ... },
+      "country": { ... }
+    }
+  },
+  "creditsRemaining": 99
+}`}
+                </pre>
+                <div className="mt-4 space-y-2 text-sm text-gray-700">
+                  <p><strong>Request Body:</strong></p>
+                  <ul className="list-disc list-inside ml-2 space-y-1">
+                    <li><code className="bg-gray-100 px-1 rounded">company</code> (required): Object with at least one company property</li>
+                    <li><code className="bg-gray-100 px-1 rounded">cleanRules</code> (optional): General cleaning instructions applied to all fields</li>
+                    <li><code className="bg-gray-100 px-1 rounded">cleanPropertyRules</code> (optional): Object with property-specific cleaning rules</li>
+                  </ul>
+                  <p className="mt-3"><strong>Features:</strong></p>
+                  <ul className="list-disc list-inside ml-2 space-y-1">
+                    <li>Returns a dynamic schema containing only the properties you provide</li>
+                    <li>User instructions are prioritized over general descriptions</li>
+                    <li>Schema is ready for use with AI structured outputs</li>
+                    <li>Each API call consumes 1 credit</li>
+                  </ul>
+                </div>
+              </div>
             </div>
           </div>
         </div>

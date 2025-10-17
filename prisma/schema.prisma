@@ -19,6 +19,7 @@ model User {
   password      String
   name          String?
   credits       Int       @default(100)
+  creditsReserved Int     @default(0)
   stripeCustomerId String?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
