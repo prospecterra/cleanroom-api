@@ -22,7 +22,7 @@ export const authOptions: NextAuthOptions = {
           }
         })
 
-        if (!user) {
+        if (!user || !user.password) {
           throw new Error("Invalid credentials")
         }
 

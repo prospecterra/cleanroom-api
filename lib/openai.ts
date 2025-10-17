@@ -14,9 +14,9 @@ export function getOpenAIClient(): OpenAI {
 }
 
 export async function callOpenAIWithStructuredOutput(
-  companyData: Record<string, any>,
-  jsonSchema: any
-): Promise<any> {
+  companyData: Record<string, unknown>,
+  jsonSchema: Record<string, unknown>
+): Promise<Record<string, unknown>> {
   const client = getOpenAIClient()
 
   try {
@@ -45,9 +45,10 @@ export async function callOpenAIWithStructuredOutput(
       throw new Error("No response from OpenAI")
     }
 
-    return JSON.parse(responseContent)
-  } catch (error: any) {
+    return JSON.parse(responseContent) as Record<string, unknown>
+  } catch (error) {
     console.error("OpenAI API error:", error)
-    throw new Error(`OpenAI API error: ${error.message}`)
+    const message = error instanceof Error ? error.message : "Unknown error"
+    throw new Error(`OpenAI API error: ${message}`)
   }
 }

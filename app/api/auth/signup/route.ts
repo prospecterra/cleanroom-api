@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server"
-import { prisma } from "@/lib/prisma"
-import bcrypt from "bcrypt"
+import { auth } from "@/lib/better-auth"
 
+// BetterAuth handles signup through its own API at /api/auth/better-auth/sign-up/email
+// This route is kept for backward compatibility but delegates to BetterAuth
 export async function POST(req: NextRequest) {
   try {
     const { email, password, name } = await req.json()
@@ -13,43 +14,38 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    const existingUser = await prisma.user.findUnique({
-      where: { email }
-    })
-
-    if (existingUser) {
-      return NextResponse.json(
-        { error: "User already exists" },
-        { status: 400 }
-      )
-    }
-
-    const hashedPassword = await bcrypt.hash(password, 10)
-
-    const user = await prisma.user.create({
-      data: {
+    // Use BetterAuth's signup API
+    const result = await auth.api.signUpEmail({
+      body: {
         email,
-        password: hashedPassword,
-        name,
-        credits: 100 // Starting credits
+        password,
+        name
       }
     })
+
+    if (!result) {
+      return NextResponse.json(
+        { error: "Failed to create user" },
+        { status: 500 }
+      )
+    }
 
     return NextResponse.json(
       {
         message: "User created successfully",
         user: {
-          id: user.id,
-          email: user.email,
-          name: user.name
+          id: result.user.id,
+          email: result.user.email,
+          name: result.user.name
         }
       },
       { status: 201 }
     )
   } catch (error) {
     console.error("Signup error:", error)
+    const message = error instanceof Error ? error.message : "Internal server error"
     return NextResponse.json(
-      { error: "Internal server error" },
+      { error: message },
       { status: 500 }
     )
   }

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { checkRateLimit } from "@/lib/ratelimit"
 import { callOpenAIWithStructuredOutput } from "@/lib/openai"
+import { checkFeatureAccess, trackFeatureUsage } from "@/lib/autumn"
 
 // Base JSON schema template for company data cleaning
 const BASE_SCHEMA = {
@@ -644,7 +645,7 @@ const BASE_SCHEMA = {
 }
 
 interface CompanyInput {
-  company: Record<string, any>
+  company: Record<string, unknown>
   cleanRules?: string
   cleanPropertyRules?: Record<string, string>
 }
@@ -677,7 +678,6 @@ function buildDynamicSchema(input: CompanyInput) {
 
 export async function POST(req: NextRequest) {
   let userId: string | undefined
-  let creditReserved = false
 
   try {
     // Get API key from header
@@ -693,8 +693,8 @@ export async function POST(req: NextRequest) {
     // Parse request body
     let body: CompanyInput
     try {
-      body = await req.json()
-    } catch (error) {
+      body = await req.json() as CompanyInput
+    } catch {
       return NextResponse.json(
         { error: "Invalid JSON in request body" },
         { status: 400 }
@@ -724,9 +724,7 @@ export async function POST(req: NextRequest) {
       include: {
         user: {
           select: {
-            id: true,
-            credits: true,
-            creditsReserved: true
+            id: true
           }
         }
       }
@@ -764,32 +762,19 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // Calculate available credits (total - reserved)
-    const availableCredits = keyRecord.user.credits - keyRecord.user.creditsReserved
+    // Check feature access with Autumn
+    const featureAccess = await checkFeatureAccess(userId, "company-cleaning")
 
-    // Check if user has enough AVAILABLE credits
-    if (availableCredits < 1) {
+    if (!featureAccess.allowed) {
       return NextResponse.json(
         {
-          error: "Insufficient credits",
-          credits: keyRecord.user.credits,
-          creditsReserved: keyRecord.user.creditsReserved,
-          creditsAvailable: availableCredits
+          error: "Feature access denied. Please upgrade your plan or purchase additional credits.",
+          remaining: featureAccess.remaining,
+          limit: featureAccess.limit
         },
         { status: 402 }
       )
     }
-
-    // IMMEDIATELY reserve credit to prevent race conditions
-    await prisma.user.update({
-      where: { id: userId },
-      data: {
-        creditsReserved: {
-          increment: 1
-        }
-      }
-    })
-    creditReserved = true
 
     // Build the dynamic schema based on input
     const dynamicSchema = buildDynamicSchema(body)
@@ -798,86 +783,39 @@ export async function POST(req: NextRequest) {
     let cleanedData
     try {
       cleanedData = await callOpenAIWithStructuredOutput(body.company, dynamicSchema)
-    } catch (openaiError: any) {
+    } catch (openaiError) {
       console.error("OpenAI error:", openaiError)
-
-      // Release reserved credit on OpenAI failure
-      await prisma.user.update({
-        where: { id: userId },
-        data: {
-          creditsReserved: {
-            decrement: 1
-          }
-        }
-      })
-      creditReserved = false
+      const details = openaiError instanceof Error ? openaiError.message : "Unknown error"
 
       return NextResponse.json(
-        { error: "Failed to process company data", details: openaiError.message },
+        { error: "Failed to process company data", details },
         { status: 500 }
       )
     }
 
-    // Success! Now commit the credit deduction and create transaction
-    const updatedUser = await prisma.$transaction([
-      // Deduct from both credits and reserved
-      prisma.user.update({
-        where: { id: userId },
-        data: {
-          credits: {
-            decrement: 1
-          },
-          creditsReserved: {
-            decrement: 1
-          }
-        },
-        select: {
-          credits: true
-        }
-      }),
-      // Create transaction record
-      prisma.transaction.create({
-        data: {
-          userId,
-          type: "API_USAGE",
-          amount: 0,
-          credits: -1,
-          description: "Company data cleaning API call"
-        }
-      }),
-      // Update API key last used
-      prisma.apiKey.update({
-        where: { id: keyRecord.id },
-        data: {
-          lastUsed: new Date()
-        }
-      })
-    ])
-    creditReserved = false
+    // Success! Track usage with Autumn
+    try {
+      await trackFeatureUsage(userId, "company-cleaning", 1)
+    } catch (trackError) {
+      console.error("Failed to track usage with Autumn:", trackError)
+      // Continue - don't fail the request if tracking fails
+    }
+
+    // Update API key last used
+    await prisma.apiKey.update({
+      where: { id: keyRecord.id },
+      data: {
+        lastUsed: new Date()
+      }
+    })
 
     return NextResponse.json({
       data: cleanedData,
-      creditsRemaining: updatedUser[0].credits
+      remaining: featureAccess.remaining ? featureAccess.remaining - 1 : undefined
     })
 
-  } catch (error: any) {
+  } catch (error) {
     console.error("API error:", error)
-
-    // If credit was reserved but not committed, release it
-    if (creditReserved && userId) {
-      try {
-        await prisma.user.update({
-          where: { id: userId },
-          data: {
-            creditsReserved: {
-              decrement: 1
-            }
-          }
-        })
-      } catch (releaseError) {
-        console.error("Failed to release reserved credit:", releaseError)
-      }
-    }
 
     return NextResponse.json(
       { error: "Internal server error" },

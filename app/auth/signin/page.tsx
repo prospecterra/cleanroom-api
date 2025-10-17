@@ -89,7 +89,7 @@ export default function SignInPage() {
           </button>
 
           <div className="text-center text-sm text-gray-900">
-            Don't have an account?{" "}
+            Don&apos;t have an account?{" "}
             <Link href="/auth/signup" className="text-blue-600 hover:text-blue-700 font-medium">
               Sign up
             </Link>
