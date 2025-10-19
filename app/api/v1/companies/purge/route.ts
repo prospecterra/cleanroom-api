@@ -38,13 +38,13 @@ export async function POST(req: NextRequest) {
     const supabase = await createClient()
     const { data: apiKeyData, error: apiKeyError } = await supabase
       .from("api_keys")
-      .select("user_id, active")
+      .select("id, user_id")
       .eq("key", apiKey)
       .single()
 
-    if (apiKeyError || !apiKeyData || !apiKeyData.active) {
+    if (apiKeyError || !apiKeyData) {
       return NextResponse.json(
-        { error: "Invalid or inactive API key" },
+        { error: "Invalid API key" },
         { status: 401 }
       )
     }
@@ -140,7 +140,7 @@ IMPORTANT: These custom purge rules take absolute precedence over all default cr
     await supabase
       .from("api_keys")
       .update({ last_used: new Date().toISOString() })
-      .eq("key", apiKey)
+      .eq("id", apiKeyData.id)
 
     // Get updated credit balance
     const updatedAccess = await checkFeatureAccess(userId, "api_credits")
