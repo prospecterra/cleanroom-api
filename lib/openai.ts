@@ -21,7 +21,7 @@ export async function callOpenAIWithStructuredOutput(
 
   try {
     const completion = await client.chat.completions.create({
-      model: "gpt-5-main-mini",
+      model: "gpt-5-mini",
       messages: [
         {
           role: "user",

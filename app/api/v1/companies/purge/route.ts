@@ -116,7 +116,7 @@ IMPORTANT: These custom purge rules take absolute precedence over all default cr
     // Call OpenAI with structured output
     const openai = getOpenAIClient()
     const completion = await openai.chat.completions.create({
-      model: "gpt-5-main-mini",
+      model: "gpt-5-mini",
       messages: [
         {
           role: "system",
