@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { createServiceClient } from "@/lib/supabase/service"
 import { checkFeatureAccess, trackFeatureUsage } from "@/lib/autumn"
 import { getOpenAIClient } from "@/lib/openai"
+import { detectCRMFromHeaders, createCRMClient } from "@/lib/crm"
 
 // JSON schema for purge analysis
 const PurgeAnalysisSchema = {
@@ -68,7 +69,7 @@ export async function POST(req: NextRequest) {
 
     // Parse request body
     const body = await req.json()
-    const { company, purgeRules } = body
+    const { company, purgeRules, deleteRecord, recordId } = body
 
     if (!company || typeof company !== "object") {
       return NextResponse.json(
@@ -151,6 +152,40 @@ IMPORTANT: These custom purge rules take absolute precedence over all default cr
       confidence: "LOW" | "MEDIUM" | "HIGH"
     }
 
+    // CRM Integration - Delete record if requested and recommended
+    let crmDeleteStatus: { success: boolean; error?: string } | undefined
+    if (deleteRecord && recordId && analysis.recommendedAction === "REMOVE") {
+      const crmCredentials = detectCRMFromHeaders(req.headers)
+
+      if (crmCredentials) {
+        try {
+          const crmClient = createCRMClient(crmCredentials)
+
+          // Delete CRM record
+          await crmClient.deleteCompany({
+            recordId: recordId
+          })
+
+          crmDeleteStatus = { success: true }
+        } catch (crmError) {
+          console.error("CRM deletion error:", crmError)
+          const errorMessage = crmError instanceof Error ? crmError.message : "Unknown CRM error"
+          crmDeleteStatus = { success: false, error: errorMessage }
+          // Don't fail the whole request if CRM deletion fails
+        }
+      } else {
+        crmDeleteStatus = {
+          success: false,
+          error: "No CRM credentials provided in headers (e.g., x-hubspot-api-key)"
+        }
+      }
+    } else if (deleteRecord && recordId && analysis.recommendedAction === "KEEP") {
+      crmDeleteStatus = {
+        success: false,
+        error: "Record not deleted because analysis recommended KEEP"
+      }
+    }
+
     // Track usage (deduct 1 credit)
     await trackFeatureUsage(userId, "api_credits", 1)
 
@@ -166,6 +201,8 @@ IMPORTANT: These custom purge rules take absolute precedence over all default cr
     return NextResponse.json({
       analysis,
       creditsRemaining: updatedAccess.remaining || 0,
+      recordDeleted: crmDeleteStatus?.success === true,
+      ...(crmDeleteStatus && { crmDelete: crmDeleteStatus })
     })
   } catch (error) {
     console.error("Error in purge analysis:", error)

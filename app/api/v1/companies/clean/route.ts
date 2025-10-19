@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js"
 import { checkRateLimit } from "@/lib/ratelimit"
 import { callOpenAIWithStructuredOutput } from "@/lib/openai"
 import { checkFeatureAccess, trackFeatureUsage } from "@/lib/autumn"
+import { detectCRMFromHeaders, createCRMClient } from "@/lib/crm"
 
 // Base JSON schema template for company data cleaning
 const BASE_SCHEMA = {
@@ -648,6 +649,8 @@ interface CompanyInput {
   company: Record<string, unknown>
   cleanRules?: string
   cleanPropertyRules?: Record<string, string>
+  updateRecord?: boolean
+  recordId?: string
 }
 
 function buildDynamicSchema(input: CompanyInput) {
@@ -800,6 +803,48 @@ export async function POST(req: NextRequest) {
       )
     }
 
+    // CRM Integration - Update record if requested
+    let crmUpdateStatus: { success: boolean; error?: string } | undefined
+    if (body.updateRecord && body.recordId) {
+      const crmCredentials = detectCRMFromHeaders(req.headers)
+
+      if (crmCredentials) {
+        try {
+          const crmClient = createCRMClient(crmCredentials)
+
+          // Extract cleaned properties from OpenAI response
+          const properties: Record<string, any> = {}
+          for (const [key, value] of Object.entries(cleanedData)) {
+            if (value && typeof value === 'object' && 'recommendedValue' in value) {
+              const fieldData = value as { recommendedValue: any }
+              // Only include non-null values
+              if (fieldData.recommendedValue !== null) {
+                properties[key] = fieldData.recommendedValue
+              }
+            }
+          }
+
+          // Update CRM record
+          await crmClient.updateCompany({
+            recordId: body.recordId,
+            properties
+          })
+
+          crmUpdateStatus = { success: true }
+        } catch (crmError) {
+          console.error("CRM update error:", crmError)
+          const errorMessage = crmError instanceof Error ? crmError.message : "Unknown CRM error"
+          crmUpdateStatus = { success: false, error: errorMessage }
+          // Don't fail the whole request if CRM update fails
+        }
+      } else {
+        crmUpdateStatus = {
+          success: false,
+          error: "No CRM credentials provided in headers (e.g., x-hubspot-api-key)"
+        }
+      }
+    }
+
     // Success! Track usage with Autumn
     try {
       await trackFeatureUsage(userId, "api_credits", 1)
@@ -819,7 +864,9 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({
       data: cleanedData,
-      remaining: featureAccess.remaining ? featureAccess.remaining - 1 : undefined
+      remaining: featureAccess.remaining ? featureAccess.remaining - 1 : undefined,
+      recordUpdated: crmUpdateStatus?.success === true,
+      ...(crmUpdateStatus && { crmUpdate: crmUpdateStatus })
     })
 
   } catch (error) {
