@@ -314,6 +314,56 @@ export default function DashboardPage() {
                   </ul>
                 </div>
               </div>
+
+              <div className="border-t pt-6">
+                <h3 className="text-lg font-semibold text-gray-900">Company Data Purge Analysis</h3>
+                <p className="text-sm text-gray-700 mt-2">Analyze company records to identify test/fake/demo data that should be removed from your CRM:</p>
+                <pre className="bg-gray-100 p-4 rounded text-sm overflow-x-auto text-gray-900 mt-3">
+{`curl -X POST https://your-domain.com/api/v1/companies/purge \\
+  -H "Content-Type: application/json" \\
+  -H "x-api-key: YOUR_API_KEY" \\
+  -d '{
+    "company": {
+      "name": "Test Company Demo",
+      "domain": "example.com",
+      "email": "test@example.com"
+    },
+    "purgeRules": "Remove any companies with domains ending in .test or .example"
+  }'`}
+                </pre>
+                <p className="text-sm text-gray-700 mt-3">Response:</p>
+                <pre className="bg-gray-100 p-4 rounded text-sm text-gray-900 mt-2">
+{`{
+  "analysis": {
+    "recommendedAction": "REMOVE",
+    "reasoning": "This record contains multiple test data indicators...",
+    "confidence": "HIGH"
+  },
+  "creditsRemaining": 98
+}`}
+                </pre>
+                <div className="mt-4 space-y-2 text-sm text-gray-700">
+                  <p><strong>Request Body:</strong></p>
+                  <ul className="list-disc list-inside ml-2 space-y-1">
+                    <li><code className="bg-gray-100 px-1 rounded">company</code> (required): Company record object to analyze</li>
+                    <li><code className="bg-gray-100 px-1 rounded">purgeRules</code> (optional): Custom purge criteria that override default logic</li>
+                  </ul>
+                  <p className="mt-3"><strong>Response Fields:</strong></p>
+                  <ul className="list-disc list-inside ml-2 space-y-1">
+                    <li><code className="bg-gray-100 px-1 rounded">recommendedAction</code>: REMOVE (delete) or KEEP (retain)</li>
+                    <li><code className="bg-gray-100 px-1 rounded">reasoning</code>: Detailed explanation for the recommendation</li>
+                    <li><code className="bg-gray-100 px-1 rounded">confidence</code>: HIGH, MEDIUM, or LOW confidence level</li>
+                  </ul>
+                  <p className="mt-3"><strong>Features:</strong></p>
+                  <ul className="list-disc list-inside ml-2 space-y-1">
+                    <li>Identifies test/fake data with test terminology, placeholder domains, fabricated names</li>
+                    <li>Conservative approach - only recommends removal for clearly unusable data</li>
+                    <li>Custom purge rules take absolute precedence over default criteria</li>
+                    <li>Preserves legitimate companies even with incomplete data</li>
+                    <li>Each API call consumes 1 credit</li>
+                  </ul>
+                </div>
+              </div>
             </div>
           </div>
         </div>
