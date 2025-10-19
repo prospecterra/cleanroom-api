@@ -3,6 +3,8 @@
 import { useState } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
+import { createClient } from "@/lib/supabase/client"
+import { isSupabaseConfigured } from "@/lib/supabase/config"
 
 export default function SignUpPage() {
   const router = useRouter()
@@ -11,6 +13,7 @@ export default function SignUpPage() {
   const [password, setPassword] = useState("")
   const [error, setError] = useState("")
   const [loading, setLoading] = useState(false)
+  const supabaseConfigured = isSupabaseConfigured()
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -18,18 +21,25 @@ export default function SignUpPage() {
     setLoading(true)
 
     try {
-      const response = await fetch("/api/auth/signup", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password, name }),
+      const supabase = createClient()
+
+      // Sign up with Supabase Auth
+      const { data, error: signUpError } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: {
+            name,
+          },
+        },
       })
 
-      const data = await response.json()
-
-      if (!response.ok) {
-        setError(data.error || "An error occurred")
-      } else {
-        router.push("/auth/signin")
+      if (signUpError) {
+        setError(signUpError.message)
+      } else if (data.user) {
+        // User is now logged in, redirect to dashboard
+        router.push("/dashboard")
+        router.refresh()
       }
     } catch (error) {
       setError("An error occurred")
@@ -45,6 +55,18 @@ export default function SignUpPage() {
           <h2 className="text-3xl font-bold text-center text-gray-900">Sign up</h2>
         </div>
         <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
+          {!supabaseConfigured && (
+            <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 p-4 rounded text-sm">
+              <p className="font-semibold mb-2">⚠️ Supabase Not Configured</p>
+              <p className="mb-2">Authentication is disabled until you configure Supabase.</p>
+              <Link
+                href="/setup"
+                className="inline-block mt-2 text-yellow-900 underline font-medium hover:text-yellow-700"
+              >
+                View Setup Guide →
+              </Link>
+            </div>
+          )}
           {error && (
             <div className="bg-red-50 text-red-700 p-3 rounded text-sm font-medium">
               {error}
@@ -96,10 +118,10 @@ export default function SignUpPage() {
 
           <button
             type="submit"
-            disabled={loading}
-            className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
+            disabled={loading || !supabaseConfigured}
+            className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {loading ? "Creating account..." : "Sign up"}
+            {loading ? "Creating account..." : !supabaseConfigured ? "Configure Supabase First" : "Sign up"}
           </button>
 
           <div className="text-center text-sm text-gray-900">

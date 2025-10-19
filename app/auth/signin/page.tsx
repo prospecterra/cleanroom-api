@@ -1,9 +1,10 @@
 "use client"
 
 import { useState } from "react"
-import { signIn } from "next-auth/react"
+import { createClient } from "@/lib/supabase/client"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
+import { isSupabaseConfigured } from "@/lib/supabase/config"
 
 export default function SignInPage() {
   const router = useRouter()
@@ -11,6 +12,7 @@ export default function SignInPage() {
   const [password, setPassword] = useState("")
   const [error, setError] = useState("")
   const [loading, setLoading] = useState(false)
+  const supabaseConfigured = isSupabaseConfigured()
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -18,14 +20,15 @@ export default function SignInPage() {
     setLoading(true)
 
     try {
-      const result = await signIn("credentials", {
+      const supabase = createClient()
+
+      const { error: signInError } = await supabase.auth.signInWithPassword({
         email,
         password,
-        redirect: false,
       })
 
-      if (result?.error) {
-        setError("Invalid credentials")
+      if (signInError) {
+        setError(signInError.message)
       } else {
         router.push("/dashboard")
         router.refresh()
@@ -44,6 +47,18 @@ export default function SignInPage() {
           <h2 className="text-3xl font-bold text-center text-gray-900">Sign in</h2>
         </div>
         <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
+          {!supabaseConfigured && (
+            <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 p-4 rounded text-sm">
+              <p className="font-semibold mb-2">⚠️ Supabase Not Configured</p>
+              <p className="mb-2">Authentication is disabled until you configure Supabase.</p>
+              <Link
+                href="/setup"
+                className="inline-block mt-2 text-yellow-900 underline font-medium hover:text-yellow-700"
+              >
+                View Setup Guide →
+              </Link>
+            </div>
+          )}
           {error && (
             <div className="bg-red-50 text-red-700 p-3 rounded text-sm font-medium">
               {error}
@@ -82,10 +97,10 @@ export default function SignInPage() {
 
           <button
             type="submit"
-            disabled={loading}
-            className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
+            disabled={loading || !supabaseConfigured}
+            className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {loading ? "Signing in..." : "Sign in"}
+            {loading ? "Signing in..." : !supabaseConfigured ? "Configure Supabase First" : "Sign in"}
           </button>
 
           <div className="text-center text-sm text-gray-900">
