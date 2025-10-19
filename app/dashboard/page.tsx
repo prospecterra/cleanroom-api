@@ -1,8 +1,10 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { useSession, signOut } from "next-auth/react"
+import { createClient } from "@/lib/supabase/client"
 import { useRouter } from "next/navigation"
+import { PricingTable } from "autumn-js/react"
+import type { User } from "@supabase/supabase-js"
 
 interface ApiKey {
   id: string
@@ -18,26 +20,30 @@ interface User {
 }
 
 export default function DashboardPage() {
-  const { data: session, status } = useSession()
+  const supabase = createClient()
   const router = useRouter()
   const [apiKeys, setApiKeys] = useState<ApiKey[]>([])
   const [user, setUser] = useState<User | null>(null)
+  const [userData, setUserData] = useState<{credits: number, email: string} | null>(null)
   const [newKeyName, setNewKeyName] = useState("")
   const [loading, setLoading] = useState(false)
   const [showNewKeyForm, setShowNewKeyForm] = useState(false)
+  const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
-    if (status === "unauthenticated") {
-      router.push("/auth/signin")
+    const checkUser = async () => {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) {
+        router.push("/auth/signin")
+      } else {
+        setUser(user)
+        fetchApiKeys()
+        fetchUser()
+      }
+      setIsLoading(false)
     }
-  }, [status, router])
-
-  useEffect(() => {
-    if (status === "authenticated") {
-      fetchApiKeys()
-      fetchUser()
-    }
-  }, [status])
+    checkUser()
+  }, [])
 
   const fetchApiKeys = async () => {
     try {
@@ -53,7 +59,7 @@ export default function DashboardPage() {
     try {
       const response = await fetch("/api/user")
       const data = await response.json()
-      setUser(data.user)
+      setUserData(data.user)
     } catch (error) {
       console.error("Error fetching user:", error)
     }
@@ -99,11 +105,11 @@ export default function DashboardPage() {
     navigator.clipboard.writeText(text)
   }
 
-  if (status === "loading") {
+  if (isLoading) {
     return <div className="min-h-screen flex items-center justify-center text-gray-900">Loading...</div>
   }
 
-  if (!session) {
+  if (!user) {
     return null
   }
 
@@ -116,9 +122,13 @@ export default function DashboardPage() {
               <h1 className="text-xl font-bold text-gray-900">API Platform</h1>
             </div>
             <div className="flex items-center space-x-4">
-              <span className="text-sm text-gray-900">{session.user.email}</span>
+              <span className="text-sm text-gray-900">{user.email}</span>
               <button
-                onClick={() => signOut({ callbackUrl: "/auth/signin" })}
+                onClick={async () => {
+                  await supabase.auth.signOut()
+                  router.push("/auth/signin")
+                  router.refresh()
+                }}
                 className="text-sm text-gray-900 hover:text-gray-700 font-medium"
               >
                 Sign out
@@ -135,7 +145,7 @@ export default function DashboardPage() {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="bg-blue-50 p-4 rounded">
                 <p className="text-sm text-gray-700 font-medium">Credits Remaining</p>
-                <p className="text-3xl font-bold text-blue-700">{user?.credits || 0}</p>
+                <p className="text-3xl font-bold text-blue-700">{userData?.credits || 0}</p>
               </div>
               <div className="bg-green-50 p-4 rounded">
                 <p className="text-sm text-gray-700 font-medium">Active API Keys</p>
@@ -143,9 +153,15 @@ export default function DashboardPage() {
               </div>
               <div className="bg-purple-50 p-4 rounded">
                 <p className="text-sm text-gray-700 font-medium">Account Email</p>
-                <p className="text-sm font-medium text-purple-700 truncate">{user?.email}</p>
+                <p className="text-sm font-medium text-purple-700 truncate">{user.email}</p>
               </div>
             </div>
+          </div>
+
+          <div className="bg-white shadow rounded-lg p-6 mb-6">
+            <h2 className="text-2xl font-bold mb-4 text-gray-900">Purchase Credits & Subscriptions</h2>
+            <p className="text-gray-600 mb-6">Choose a subscription plan or purchase one-time credit packages</p>
+            <PricingTable />
           </div>
 
           <div className="bg-white shadow rounded-lg p-6">

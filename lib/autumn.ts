@@ -19,15 +19,21 @@ export async function checkFeatureAccess(userId: string, featureId: string): Pro
   limit?: number
 }> {
   try {
-    const { data } = await autumn.check({
+    const response = await autumn.check({
       customer_id: userId,
       feature_id: featureId
     })
 
+    const { data } = response
+
+    // Autumn API uses 'balance' for remaining credits and 'included_usage' for limit
+    const remaining = (data as any)?.balance ?? undefined
+    const limit = (data as any)?.included_usage ?? undefined
+
     return {
       allowed: data?.allowed ?? false,
-      remaining: (data as { remaining?: number })?.remaining,
-      limit: (data as { limit?: number })?.limit
+      remaining,
+      limit
     }
   } catch (error) {
     console.error("Autumn check error:", error)

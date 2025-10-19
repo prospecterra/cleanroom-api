@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
-import { prisma } from "@/lib/prisma"
+import { createClient } from "@/lib/supabase/server"
+import { checkFeatureAccess, trackFeatureUsage } from "@/lib/autumn"
 
 export async function GET(req: NextRequest) {
   try {
@@ -12,64 +13,58 @@ export async function GET(req: NextRequest) {
       )
     }
 
-    // Validate API key and get user
-    const keyRecord = await prisma.apiKey.findUnique({
-      where: { key: apiKey },
-      include: {
-        user: {
-          select: {
-            id: true,
-            credits: true
-          }
-        }
-      }
-    })
+    const supabase = await createClient()
 
-    if (!keyRecord) {
+    // Validate API key
+    const { data: keyRecord, error: keyError } = await supabase
+      .from('api_keys')
+      .select('id, user_id')
+      .eq('key', apiKey)
+      .single()
+
+    if (keyError || !keyRecord) {
       return NextResponse.json(
         { error: "Invalid API key" },
         { status: 401 }
       )
     }
 
-    // Check if user has enough credits
-    if (keyRecord.user.credits < 1) {
+    const userId = keyRecord.user_id
+
+    // Check feature access with Autumn
+    const featureAccess = await checkFeatureAccess(userId, "api_credits")
+
+    if (!featureAccess.allowed) {
       return NextResponse.json(
-        { error: "Insufficient credits" },
+        {
+          error: "Insufficient credits. Please purchase more credits to continue using the API.",
+          remaining: featureAccess.remaining || 0,
+          limit: featureAccess.limit
+        },
         { status: 402 }
       )
     }
 
-    // Deduct credit and create transaction
-    await prisma.$transaction([
-      prisma.user.update({
-        where: { id: keyRecord.user.id },
-        data: {
-          credits: {
-            decrement: 1
-          }
-        }
-      }),
-      prisma.transaction.create({
-        data: {
-          userId: keyRecord.user.id,
-          type: "API_USAGE",
-          amount: 0,
-          credits: -1,
-          description: "Hello World API call"
-        }
-      }),
-      prisma.apiKey.update({
-        where: { id: keyRecord.id },
-        data: {
-          lastUsed: new Date()
-        }
-      })
-    ])
+    // Track usage with Autumn (deduct 1 credit)
+    try {
+      await trackFeatureUsage(userId, "api_credits", 1)
+    } catch (trackError) {
+      console.error("Failed to track usage with Autumn:", trackError)
+      return NextResponse.json(
+        { error: "Failed to track credit usage" },
+        { status: 500 }
+      )
+    }
+
+    // Update API key last used
+    await supabase
+      .from('api_keys')
+      .update({ last_used: new Date().toISOString() })
+      .eq('id', keyRecord.id)
 
     return NextResponse.json({
       message: "Hello World",
-      creditsRemaining: keyRecord.user.credits - 1
+      creditsRemaining: featureAccess.remaining ? featureAccess.remaining - 1 : undefined
     })
   } catch (error) {
     console.error("API error:", error)

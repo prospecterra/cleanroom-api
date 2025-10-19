@@ -1,40 +1,30 @@
 import { NextRequest, NextResponse } from "next/server"
-import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth"
-import { prisma } from "@/lib/prisma"
+import { createClient } from "@/lib/supabase/server"
+import { checkFeatureAccess } from "@/lib/autumn"
 
 export async function GET(req: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
+    const supabase = await createClient()
+    const { data: { user }, error } = await supabase.auth.getUser()
 
-    if (!session?.user?.id) {
+    if (error || !user) {
       return NextResponse.json(
         { error: "Unauthorized" },
         { status: 401 }
       )
     }
 
-    const user = await prisma.user.findUnique({
-      where: {
-        id: session.user.id
-      },
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        credits: true,
-        createdAt: true
+    // Get credit balance from Autumn
+    const creditBalance = await checkFeatureAccess(user.id, "api_credits")
+
+    return NextResponse.json({
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.user_metadata?.name || user.email?.split("@")[0],
+        credits: creditBalance.remaining || 0
       }
     })
-
-    if (!user) {
-      return NextResponse.json(
-        { error: "User not found" },
-        { status: 404 }
-      )
-    }
-
-    return NextResponse.json({ user })
   } catch (error) {
     console.error("Error fetching user:", error)
     return NextResponse.json(

@@ -1,5 +1,5 @@
-// In-memory rate limiting implementation
-// In production, use Redis/Upstash for distributed rate limiting
+// Rate limiting using Vercel KV (Redis) with in-memory fallback for local dev
+import { kv } from '@vercel/kv'
 
 interface RateLimitEntry {
   count: number
@@ -9,7 +9,6 @@ interface RateLimitEntry {
 class InMemoryRateLimiter {
   private limits: Map<string, RateLimitEntry> = new Map()
 
-  // Cleanup old entries every 5 minutes
   constructor() {
     setInterval(() => this.cleanup(), 5 * 60 * 1000)
   }
@@ -33,7 +32,6 @@ class InMemoryRateLimiter {
     const entry = this.limits.get(key)
 
     if (!entry || entry.resetAt < now) {
-      // Create new window
       this.limits.set(key, {
         count: 1,
         resetAt: now + windowMs
@@ -47,7 +45,6 @@ class InMemoryRateLimiter {
     }
 
     if (entry.count >= maxRequests) {
-      // Rate limit exceeded
       return {
         success: false,
         limit: maxRequests,
@@ -56,7 +53,6 @@ class InMemoryRateLimiter {
       }
     }
 
-    // Increment count
     entry.count++
     return {
       success: true,
@@ -67,8 +63,66 @@ class InMemoryRateLimiter {
   }
 }
 
-// Singleton instance
-const rateLimiter = new InMemoryRateLimiter()
+// Check if KV is available (production) or use in-memory (local dev)
+const isKVAvailable = Boolean(process.env.KV_REST_API_URL)
+const inMemoryLimiter = new InMemoryRateLimiter()
+
+async function limit(
+  identifier: string,
+  maxRequests: number,
+  windowMs: number
+): Promise<{ success: boolean; limit: number; remaining: number; reset: number }> {
+  // Use in-memory for local dev
+  if (!isKVAvailable) {
+    return inMemoryLimiter.limit(identifier, maxRequests, windowMs)
+  }
+
+  // Use Vercel KV for production
+  try {
+    const now = Date.now()
+    const key = `ratelimit:${identifier}`
+    const windowSeconds = Math.ceil(windowMs / 1000)
+
+    // Get current count
+    const current = await kv.get<RateLimitEntry>(key)
+
+    if (!current || current.resetAt < now) {
+      // Create new window
+      const resetAt = now + windowMs
+      await kv.set(key, { count: 1, resetAt }, { ex: windowSeconds })
+      return {
+        success: true,
+        limit: maxRequests,
+        remaining: maxRequests - 1,
+        reset: resetAt
+      }
+    }
+
+    if (current.count >= maxRequests) {
+      // Rate limit exceeded
+      return {
+        success: false,
+        limit: maxRequests,
+        remaining: 0,
+        reset: current.resetAt
+      }
+    }
+
+    // Increment count
+    current.count++
+    await kv.set(key, current, { ex: windowSeconds })
+
+    return {
+      success: true,
+      limit: maxRequests,
+      remaining: maxRequests - current.count,
+      reset: current.resetAt
+    }
+  } catch (error) {
+    console.error('KV rate limit error, falling back to in-memory:', error)
+    return inMemoryLimiter.limit(identifier, maxRequests, windowMs)
+  }
+}
 
 // Rate limit configurations
 export const RATE_LIMITS = {
@@ -89,7 +143,7 @@ export async function checkRateLimit(
   reset?: number
 }> {
   // Check per-minute limit
-  const perMinute = await rateLimiter.limit(
+  const perMinute = await limit(
     `${endpoint}:${userId}:minute`,
     RATE_LIMITS.CLEAN_ENDPOINT_PER_MINUTE.requests,
     RATE_LIMITS.CLEAN_ENDPOINT_PER_MINUTE.window
@@ -106,7 +160,7 @@ export async function checkRateLimit(
   }
 
   // Check per-hour limit
-  const perHour = await rateLimiter.limit(
+  const perHour = await limit(
     `${endpoint}:${userId}:hour`,
     RATE_LIMITS.CLEAN_ENDPOINT_PER_HOUR.requests,
     RATE_LIMITS.CLEAN_ENDPOINT_PER_HOUR.window
@@ -123,7 +177,7 @@ export async function checkRateLimit(
   }
 
   // Check per-day limit
-  const perDay = await rateLimiter.limit(
+  const perDay = await limit(
     `${endpoint}:${userId}:day`,
     RATE_LIMITS.CLEAN_ENDPOINT_PER_DAY.requests,
     RATE_LIMITS.CLEAN_ENDPOINT_PER_DAY.window
