@@ -92,8 +92,31 @@ api-platform/
 2. Test locally
 3. Run database migrations if schema changed: `npx prisma migrate dev`
 4. Generate Prisma client: `npx prisma generate`
-5. Commit with proper convention
-6. Push to GitHub
+5. **Commit regularly** - Don't wait until everything is done
+6. Push to GitHub when milestone is reached
+
+### When to Commit
+
+**IMPORTANT**: Commit changes incrementally as you work, not just at the end. Good times to commit:
+
+- ✅ After completing a logical unit of work (e.g., one feature, one bug fix)
+- ✅ After fixing a bug or error
+- ✅ After refactoring a component or module
+- ✅ After updating configuration or environment setup
+- ✅ Before switching to work on a different feature or area
+- ✅ When the code is in a working state (tests pass, no errors)
+
+**Don't wait** to commit everything at once. Small, focused commits make it easier to:
+- Track progress and changes over time
+- Revert specific changes if needed
+- Understand what was changed and why
+- Collaborate with others
+
+### Commit Frequency Guidelines
+
+- Aim for commits every 15-30 minutes during active development
+- Each commit should represent one logical change
+- Commit message should clearly explain what changed and why
 
 ## Database Migrations
 
