@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { createClient } from "@/lib/supabase/server"
+import { createServiceClient } from "@/lib/supabase/service"
 import { checkFeatureAccess, trackFeatureUsage } from "@/lib/autumn"
 
 export async function GET(req: NextRequest) {
@@ -13,9 +13,9 @@ export async function GET(req: NextRequest) {
       )
     }
 
-    const supabase = await createClient()
+    // Validate API key using service role client (bypasses RLS)
+    const supabase = createServiceClient()
 
-    // Validate API key
     const { data: keyRecord, error: keyError } = await supabase
       .from('api_keys')
       .select('id, user_id')

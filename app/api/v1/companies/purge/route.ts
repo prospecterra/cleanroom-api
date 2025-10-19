@@ -1,26 +1,30 @@
 import { NextRequest, NextResponse } from "next/server"
-import OpenAI from "openai"
-import { zodResponseFormat } from "openai/helpers/zod"
-import { z } from "zod"
-import { createClient } from "@/lib/supabase/server"
+import { createServiceClient } from "@/lib/supabase/service"
 import { checkFeatureAccess, trackFeatureUsage } from "@/lib/autumn"
+import { getOpenAIClient } from "@/lib/openai"
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-})
-
-// Zod schema for purge analysis
-const PurgeAnalysisSchema = z.object({
-  recommendedAction: z.enum(["REMOVE", "KEEP"]).describe(
-    "The recommended action for the company record. REMOVE should only be used for clearly unusable data including: (1) Obvious test data - company names containing 'test', 'testing', 'demo', 'example', 'sample', 'asdf', 'qwerty', 'xxx', 'dummy' or domains like test.com, example.com, localhost, fake.com, demo.com; (2) Completely fake/invalid data - empty/null company names, names that are just numbers or special characters, obviously fabricated data like 'Mickey Mouse Inc', 'Fake Company', 'Delete Me Corp'; (3) Unusable records - no company name AND no domain/website, critical data corruption, clear placeholder entries. KEEP should be used for all legitimate company records, even those with incomplete data, missing fields, or no associated contacts/activities. When in doubt, always recommend KEEP. Custom purge rules take absolute precedence over default criteria when provided."
-  ),
-  reasoning: z.string().describe(
-    "A clear, detailed paragraph explaining the reasoning behind the recommendation. For REMOVE recommendations, specify which test/fake data indicators were identified (e.g., test terminology in name, placeholder domains, fabricated data patterns) and why the record has no business value. For KEEP recommendations, explain why the record appears legitimate despite any missing or incomplete data, noting the presence of valid company identifiers (legitimate name, real domain, etc.). The reasoning should reference specific data points from the company record and explain how they led to the recommendation. When custom purge rules are applied, explicitly state which rule criteria were matched and how they override default logic. The reasoning should be substantive enough to justify the action to a human reviewer."
-  ),
-  confidence: z.enum(["LOW", "MEDIUM", "HIGH"]).describe(
-    "The confidence level in the purge recommendation based on clarity of indicators. HIGH: Obvious test/fake data with clear, unambiguous indicators (e.g., company name is 'Test Company Demo' with domain 'example.com', or explicit fabricated data like 'Fake Business Inc') or clear custom rule match. MEDIUM: Some test/fake indicators present but not completely certain (e.g., suspicious patterns like 'XXX Corp' but with some legitimate data, or company name contains test-like words but could be legitimate like 'Testing Services Ltd'). LOW: Unclear or borderline cases where the evidence is ambiguous (e.g., very minimal data but potentially legitimate, unusual naming that could be real or fake). Confidence should reflect both the strength of the indicators and the potential risk of incorrectly removing a legitimate company record."
-  ),
-})
+// JSON schema for purge analysis
+const PurgeAnalysisSchema = {
+  type: "object",
+  properties: {
+    recommendedAction: {
+      type: "string",
+      enum: ["REMOVE", "KEEP"],
+      description: "The recommended action for the company record. REMOVE should only be used for clearly unusable data including: (1) Obvious test data - company names containing 'test', 'testing', 'demo', 'example', 'sample', 'asdf', 'qwerty', 'xxx', 'dummy' or domains like test.com, example.com, localhost, fake.com, demo.com; (2) Completely fake/invalid data - empty/null company names, names that are just numbers or special characters, obviously fabricated data like 'Mickey Mouse Inc', 'Fake Company', 'Delete Me Corp'; (3) Unusable records - no company name AND no domain/website, critical data corruption, clear placeholder entries. KEEP should be used for all legitimate company records, even those with incomplete data, missing fields, or no associated contacts/activities. When in doubt, always recommend KEEP. Custom purge rules take absolute precedence over default criteria when provided."
+    },
+    reasoning: {
+      type: "string",
+      description: "A clear, detailed paragraph explaining the reasoning behind the recommendation. For REMOVE recommendations, specify which test/fake data indicators were identified (e.g., test terminology in name, placeholder domains, fabricated data patterns) and why the record has no business value. For KEEP recommendations, explain why the record appears legitimate despite any missing or incomplete data, noting the presence of valid company identifiers (legitimate name, real domain, etc.). The reasoning should reference specific data points from the company record and explain how they led to the recommendation. When custom purge rules are applied, explicitly state which rule criteria were matched and how they override default logic. The reasoning should be substantive enough to justify the action to a human reviewer."
+    },
+    confidence: {
+      type: "string",
+      enum: ["LOW", "MEDIUM", "HIGH"],
+      description: "The confidence level in the purge recommendation based on clarity of indicators. HIGH: Obvious test/fake data with clear, unambiguous indicators (e.g., company name is 'Test Company Demo' with domain 'example.com', or explicit fabricated data like 'Fake Business Inc') or clear custom rule match. MEDIUM: Some test/fake indicators present but not completely certain (e.g., suspicious patterns like 'XXX Corp' but with some legitimate data, or company name contains test-like words but could be legitimate like 'Testing Services Ltd'). LOW: Unclear or borderline cases where the evidence is ambiguous (e.g., very minimal data but potentially legitimate, unusual naming that could be real or fake). Confidence should reflect both the strength of the indicators and the potential risk of incorrectly removing a legitimate company record."
+    }
+  },
+  required: ["recommendedAction", "reasoning", "confidence"],
+  additionalProperties: false
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -34,8 +38,9 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // Validate API key and get user ID
-    const supabase = await createClient()
+    // Validate API key and get user ID using service role client (bypasses RLS)
+    const supabase = createServiceClient()
+
     const { data: apiKeyData, error: apiKeyError } = await supabase
       .from("api_keys")
       .select("id, user_id")
@@ -109,8 +114,9 @@ IMPORTANT: These custom purge rules take absolute precedence over all default cr
     const companyData = JSON.stringify(company, null, 2)
 
     // Call OpenAI with structured output
-    const completion = await openai.beta.chat.completions.parse({
-      model: "gpt-4o-2024-08-06",
+    const openai = getOpenAIClient()
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
       messages: [
         {
           role: "system",
@@ -121,16 +127,29 @@ IMPORTANT: These custom purge rules take absolute precedence over all default cr
           content: `Analyze this company record:\n\n${companyData}`,
         },
       ],
-      response_format: zodResponseFormat(PurgeAnalysisSchema, "purge_analysis"),
+      response_format: {
+        type: "json_schema",
+        json_schema: {
+          name: "purge_analysis",
+          schema: PurgeAnalysisSchema,
+          strict: true
+        }
+      },
+      temperature: 0.3,
     })
 
-    const analysis = completion.choices[0].message.parsed
-
-    if (!analysis) {
+    const responseContent = completion.choices[0]?.message?.content
+    if (!responseContent) {
       return NextResponse.json(
         { error: "Failed to generate purge analysis" },
         { status: 500 }
       )
+    }
+
+    const analysis = JSON.parse(responseContent) as {
+      recommendedAction: "REMOVE" | "KEEP"
+      reasoning: string
+      confidence: "LOW" | "MEDIUM" | "HIGH"
     }
 
     // Track usage (deduct 1 credit)
