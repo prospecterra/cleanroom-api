@@ -36,7 +36,6 @@ export async function callOpenAIWithStructuredOutput(
           strict: true
         }
       },
-      temperature: 0.3,
       max_tokens: 4000
     })
 

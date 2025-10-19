@@ -134,8 +134,7 @@ IMPORTANT: These custom purge rules take absolute precedence over all default cr
           schema: PurgeAnalysisSchema,
           strict: true
         }
-      },
-      temperature: 0.3,
+      }
     })
 
     const responseContent = completion.choices[0]?.message?.content
