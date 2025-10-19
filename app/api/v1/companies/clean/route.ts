@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { prisma } from "@/lib/prisma"
+import { createClient } from "@supabase/supabase-js"
 import { checkRateLimit } from "@/lib/ratelimit"
 import { callOpenAIWithStructuredOutput } from "@/lib/openai"
 import { checkFeatureAccess, trackFeatureUsage } from "@/lib/autumn"
@@ -33,7 +33,7 @@ const BASE_SCHEMA = {
         "recommendedAction": {
           "type": "string",
           "enum": ["ADD", "FIX", "REMOVE", "KEEP"],
-          "description": "The type of action recommended. ADD: previously empty/null field now has a value. FIX: existing value was modified. REMOVE: existing value should be cleared. KEEP: value remains unchanged"
+          "description": "The recommended action type based on comparing input to output. KEEP: use when input is empty/null and output should remain empty/null, OR when input is populated and output should remain unchanged. ADD: use when input is empty/null but output should be populated with a value. FIX: use when input is populated but output should contain a different value (modifications, corrections, or standardization applied). REMOVE: use when input is populated but output should be empty/null (typically because the input data was inaccurate, invalid, or test/placeholder data)."
         }
       },
       "required": ["currentValue", "recommendedValue", "reasoning", "confidence", "recommendedAction"],
@@ -63,7 +63,7 @@ const BASE_SCHEMA = {
         "recommendedAction": {
           "type": "string",
           "enum": ["ADD", "FIX", "REMOVE", "KEEP"],
-          "description": "The type of action recommended. ADD: previously empty/null field now has a value. FIX: existing value was modified. REMOVE: existing value should be cleared. KEEP: value remains unchanged"
+          "description": "The recommended action type based on comparing input to output. KEEP: use when input is empty/null and output should remain empty/null, OR when input is populated and output should remain unchanged. ADD: use when input is empty/null but output should be populated with a value. FIX: use when input is populated but output should contain a different value (modifications, corrections, or standardization applied). REMOVE: use when input is populated but output should be empty/null (typically because the input data was inaccurate, invalid, or test/placeholder data)."
         }
       },
       "required": ["currentValue", "recommendedValue", "reasoning", "confidence", "recommendedAction"],
@@ -93,7 +93,7 @@ const BASE_SCHEMA = {
         "recommendedAction": {
           "type": "string",
           "enum": ["ADD", "FIX", "REMOVE", "KEEP"],
-          "description": "The type of action recommended. ADD: previously empty/null field now has a value. FIX: existing value was modified. REMOVE: existing value should be cleared. KEEP: value remains unchanged"
+          "description": "The recommended action type based on comparing input to output. KEEP: use when input is empty/null and output should remain empty/null, OR when input is populated and output should remain unchanged. ADD: use when input is empty/null but output should be populated with a value. FIX: use when input is populated but output should contain a different value (modifications, corrections, or standardization applied). REMOVE: use when input is populated but output should be empty/null (typically because the input data was inaccurate, invalid, or test/placeholder data)."
         }
       },
       "required": ["currentValue", "recommendedValue", "reasoning", "confidence", "recommendedAction"],
@@ -123,7 +123,7 @@ const BASE_SCHEMA = {
         "recommendedAction": {
           "type": "string",
           "enum": ["ADD", "FIX", "REMOVE", "KEEP"],
-          "description": "The type of action recommended. ADD: previously empty/null field now has a value. FIX: existing value was modified. REMOVE: existing value should be cleared. KEEP: value remains unchanged"
+          "description": "The recommended action type based on comparing input to output. KEEP: use when input is empty/null and output should remain empty/null, OR when input is populated and output should remain unchanged. ADD: use when input is empty/null but output should be populated with a value. FIX: use when input is populated but output should contain a different value (modifications, corrections, or standardization applied). REMOVE: use when input is populated but output should be empty/null (typically because the input data was inaccurate, invalid, or test/placeholder data)."
         }
       },
       "required": ["currentValue", "recommendedValue", "reasoning", "confidence", "recommendedAction"],
@@ -153,7 +153,7 @@ const BASE_SCHEMA = {
         "recommendedAction": {
           "type": "string",
           "enum": ["ADD", "FIX", "REMOVE", "KEEP"],
-          "description": "The type of action recommended. ADD: previously empty/null field now has a value. FIX: existing value was modified. REMOVE: existing value should be cleared. KEEP: value remains unchanged"
+          "description": "The recommended action type based on comparing input to output. KEEP: use when input is empty/null and output should remain empty/null, OR when input is populated and output should remain unchanged. ADD: use when input is empty/null but output should be populated with a value. FIX: use when input is populated but output should contain a different value (modifications, corrections, or standardization applied). REMOVE: use when input is populated but output should be empty/null (typically because the input data was inaccurate, invalid, or test/placeholder data)."
         }
       },
       "required": ["currentValue", "recommendedValue", "reasoning", "confidence", "recommendedAction"],
@@ -183,7 +183,7 @@ const BASE_SCHEMA = {
         "recommendedAction": {
           "type": "string",
           "enum": ["ADD", "FIX", "REMOVE", "KEEP"],
-          "description": "The type of action recommended. ADD: previously empty/null field now has a value. FIX: existing value was modified. REMOVE: existing value should be cleared. KEEP: value remains unchanged"
+          "description": "The recommended action type based on comparing input to output. KEEP: use when input is empty/null and output should remain empty/null, OR when input is populated and output should remain unchanged. ADD: use when input is empty/null but output should be populated with a value. FIX: use when input is populated but output should contain a different value (modifications, corrections, or standardization applied). REMOVE: use when input is populated but output should be empty/null (typically because the input data was inaccurate, invalid, or test/placeholder data)."
         }
       },
       "required": ["currentValue", "recommendedValue", "reasoning", "confidence", "recommendedAction"],
@@ -213,7 +213,7 @@ const BASE_SCHEMA = {
         "recommendedAction": {
           "type": "string",
           "enum": ["ADD", "FIX", "REMOVE", "KEEP"],
-          "description": "The type of action recommended. ADD: previously empty/null field now has a value. FIX: existing value was modified. REMOVE: existing value should be cleared. KEEP: value remains unchanged"
+          "description": "The recommended action type based on comparing input to output. KEEP: use when input is empty/null and output should remain empty/null, OR when input is populated and output should remain unchanged. ADD: use when input is empty/null but output should be populated with a value. FIX: use when input is populated but output should contain a different value (modifications, corrections, or standardization applied). REMOVE: use when input is populated but output should be empty/null (typically because the input data was inaccurate, invalid, or test/placeholder data)."
         }
       },
       "required": ["currentValue", "recommendedValue", "reasoning", "confidence", "recommendedAction"],
@@ -243,7 +243,7 @@ const BASE_SCHEMA = {
         "recommendedAction": {
           "type": "string",
           "enum": ["ADD", "FIX", "REMOVE", "KEEP"],
-          "description": "The type of action recommended. ADD: previously empty/null field now has a value. FIX: existing value was modified. REMOVE: existing value should be cleared. KEEP: value remains unchanged"
+          "description": "The recommended action type based on comparing input to output. KEEP: use when input is empty/null and output should remain empty/null, OR when input is populated and output should remain unchanged. ADD: use when input is empty/null but output should be populated with a value. FIX: use when input is populated but output should contain a different value (modifications, corrections, or standardization applied). REMOVE: use when input is populated but output should be empty/null (typically because the input data was inaccurate, invalid, or test/placeholder data)."
         }
       },
       "required": ["currentValue", "recommendedValue", "reasoning", "confidence", "recommendedAction"],
@@ -273,7 +273,7 @@ const BASE_SCHEMA = {
         "recommendedAction": {
           "type": "string",
           "enum": ["ADD", "FIX", "REMOVE", "KEEP"],
-          "description": "The type of action recommended. ADD: previously empty/null field now has a value. FIX: existing value was modified. REMOVE: existing value should be cleared. KEEP: value remains unchanged"
+          "description": "The recommended action type based on comparing input to output. KEEP: use when input is empty/null and output should remain empty/null, OR when input is populated and output should remain unchanged. ADD: use when input is empty/null but output should be populated with a value. FIX: use when input is populated but output should contain a different value (modifications, corrections, or standardization applied). REMOVE: use when input is populated but output should be empty/null (typically because the input data was inaccurate, invalid, or test/placeholder data)."
         }
       },
       "required": ["currentValue", "recommendedValue", "reasoning", "confidence", "recommendedAction"],
@@ -303,7 +303,7 @@ const BASE_SCHEMA = {
         "recommendedAction": {
           "type": "string",
           "enum": ["ADD", "FIX", "REMOVE", "KEEP"],
-          "description": "The type of action recommended. ADD: previously empty/null field now has a value. FIX: existing value was modified. REMOVE: existing value should be cleared. KEEP: value remains unchanged"
+          "description": "The recommended action type based on comparing input to output. KEEP: use when input is empty/null and output should remain empty/null, OR when input is populated and output should remain unchanged. ADD: use when input is empty/null but output should be populated with a value. FIX: use when input is populated but output should contain a different value (modifications, corrections, or standardization applied). REMOVE: use when input is populated but output should be empty/null (typically because the input data was inaccurate, invalid, or test/placeholder data)."
         }
       },
       "required": ["currentValue", "recommendedValue", "reasoning", "confidence", "recommendedAction"],
@@ -333,7 +333,7 @@ const BASE_SCHEMA = {
         "recommendedAction": {
           "type": "string",
           "enum": ["ADD", "FIX", "REMOVE", "KEEP"],
-          "description": "The type of action recommended. ADD: previously empty/null field now has a value. FIX: existing value was modified. REMOVE: existing value should be cleared. KEEP: value remains unchanged"
+          "description": "The recommended action type based on comparing input to output. KEEP: use when input is empty/null and output should remain empty/null, OR when input is populated and output should remain unchanged. ADD: use when input is empty/null but output should be populated with a value. FIX: use when input is populated but output should contain a different value (modifications, corrections, or standardization applied). REMOVE: use when input is populated but output should be empty/null (typically because the input data was inaccurate, invalid, or test/placeholder data)."
         }
       },
       "required": ["currentValue", "recommendedValue", "reasoning", "confidence", "recommendedAction"],
@@ -363,7 +363,7 @@ const BASE_SCHEMA = {
         "recommendedAction": {
           "type": "string",
           "enum": ["ADD", "FIX", "REMOVE", "KEEP"],
-          "description": "The type of action recommended. ADD: previously empty/null field now has a value. FIX: existing value was modified. REMOVE: existing value should be cleared. KEEP: value remains unchanged"
+          "description": "The recommended action type based on comparing input to output. KEEP: use when input is empty/null and output should remain empty/null, OR when input is populated and output should remain unchanged. ADD: use when input is empty/null but output should be populated with a value. FIX: use when input is populated but output should contain a different value (modifications, corrections, or standardization applied). REMOVE: use when input is populated but output should be empty/null (typically because the input data was inaccurate, invalid, or test/placeholder data)."
         }
       },
       "required": ["currentValue", "recommendedValue", "reasoning", "confidence", "recommendedAction"],
@@ -393,7 +393,7 @@ const BASE_SCHEMA = {
         "recommendedAction": {
           "type": "string",
           "enum": ["ADD", "FIX", "REMOVE", "KEEP"],
-          "description": "The type of action recommended. ADD: previously empty/null field now has a value. FIX: existing value was modified. REMOVE: existing value should be cleared. KEEP: value remains unchanged"
+          "description": "The recommended action type based on comparing input to output. KEEP: use when input is empty/null and output should remain empty/null, OR when input is populated and output should remain unchanged. ADD: use when input is empty/null but output should be populated with a value. FIX: use when input is populated but output should contain a different value (modifications, corrections, or standardization applied). REMOVE: use when input is populated but output should be empty/null (typically because the input data was inaccurate, invalid, or test/placeholder data)."
         }
       },
       "required": ["currentValue", "recommendedValue", "reasoning", "confidence", "recommendedAction"],
@@ -423,7 +423,7 @@ const BASE_SCHEMA = {
         "recommendedAction": {
           "type": "string",
           "enum": ["ADD", "FIX", "REMOVE", "KEEP"],
-          "description": "The type of action recommended. ADD: previously empty/null field now has a value. FIX: existing value was modified. REMOVE: existing value should be cleared. KEEP: value remains unchanged"
+          "description": "The recommended action type based on comparing input to output. KEEP: use when input is empty/null and output should remain empty/null, OR when input is populated and output should remain unchanged. ADD: use when input is empty/null but output should be populated with a value. FIX: use when input is populated but output should contain a different value (modifications, corrections, or standardization applied). REMOVE: use when input is populated but output should be empty/null (typically because the input data was inaccurate, invalid, or test/placeholder data)."
         }
       },
       "required": ["currentValue", "recommendedValue", "reasoning", "confidence", "recommendedAction"],
@@ -453,7 +453,7 @@ const BASE_SCHEMA = {
         "recommendedAction": {
           "type": "string",
           "enum": ["ADD", "FIX", "REMOVE", "KEEP"],
-          "description": "The type of action recommended. ADD: previously empty/null field now has a value. FIX: existing value was modified. REMOVE: existing value should be cleared. KEEP: value remains unchanged"
+          "description": "The recommended action type based on comparing input to output. KEEP: use when input is empty/null and output should remain empty/null, OR when input is populated and output should remain unchanged. ADD: use when input is empty/null but output should be populated with a value. FIX: use when input is populated but output should contain a different value (modifications, corrections, or standardization applied). REMOVE: use when input is populated but output should be empty/null (typically because the input data was inaccurate, invalid, or test/placeholder data)."
         }
       },
       "required": ["currentValue", "recommendedValue", "reasoning", "confidence", "recommendedAction"],
@@ -483,7 +483,7 @@ const BASE_SCHEMA = {
         "recommendedAction": {
           "type": "string",
           "enum": ["ADD", "FIX", "REMOVE", "KEEP"],
-          "description": "The type of action recommended. ADD: previously empty/null field now has a value. FIX: existing value was modified. REMOVE: existing value should be cleared. KEEP: value remains unchanged"
+          "description": "The recommended action type based on comparing input to output. KEEP: use when input is empty/null and output should remain empty/null, OR when input is populated and output should remain unchanged. ADD: use when input is empty/null but output should be populated with a value. FIX: use when input is populated but output should contain a different value (modifications, corrections, or standardization applied). REMOVE: use when input is populated but output should be empty/null (typically because the input data was inaccurate, invalid, or test/placeholder data)."
         }
       },
       "required": ["currentValue", "recommendedValue", "reasoning", "confidence", "recommendedAction"],
@@ -513,7 +513,7 @@ const BASE_SCHEMA = {
         "recommendedAction": {
           "type": "string",
           "enum": ["ADD", "FIX", "REMOVE", "KEEP"],
-          "description": "The type of action recommended. ADD: previously empty/null field now has a value. FIX: existing value was modified. REMOVE: existing value should be cleared. KEEP: value remains unchanged"
+          "description": "The recommended action type based on comparing input to output. KEEP: use when input is empty/null and output should remain empty/null, OR when input is populated and output should remain unchanged. ADD: use when input is empty/null but output should be populated with a value. FIX: use when input is populated but output should contain a different value (modifications, corrections, or standardization applied). REMOVE: use when input is populated but output should be empty/null (typically because the input data was inaccurate, invalid, or test/placeholder data)."
         }
       },
       "required": ["currentValue", "recommendedValue", "reasoning", "confidence", "recommendedAction"],
@@ -543,7 +543,7 @@ const BASE_SCHEMA = {
         "recommendedAction": {
           "type": "string",
           "enum": ["ADD", "FIX", "REMOVE", "KEEP"],
-          "description": "The type of action recommended. ADD: previously empty/null field now has a value. FIX: existing value was modified. REMOVE: existing value should be cleared. KEEP: value remains unchanged"
+          "description": "The recommended action type based on comparing input to output. KEEP: use when input is empty/null and output should remain empty/null, OR when input is populated and output should remain unchanged. ADD: use when input is empty/null but output should be populated with a value. FIX: use when input is populated but output should contain a different value (modifications, corrections, or standardization applied). REMOVE: use when input is populated but output should be empty/null (typically because the input data was inaccurate, invalid, or test/placeholder data)."
         }
       },
       "required": ["currentValue", "recommendedValue", "reasoning", "confidence", "recommendedAction"],
@@ -573,7 +573,7 @@ const BASE_SCHEMA = {
         "recommendedAction": {
           "type": "string",
           "enum": ["ADD", "FIX", "REMOVE", "KEEP"],
-          "description": "The type of action recommended. ADD: previously empty/null field now has a value. FIX: existing value was modified. REMOVE: existing value should be cleared. KEEP: value remains unchanged"
+          "description": "The recommended action type based on comparing input to output. KEEP: use when input is empty/null and output should remain empty/null, OR when input is populated and output should remain unchanged. ADD: use when input is empty/null but output should be populated with a value. FIX: use when input is populated but output should contain a different value (modifications, corrections, or standardization applied). REMOVE: use when input is populated but output should be empty/null (typically because the input data was inaccurate, invalid, or test/placeholder data)."
         }
       },
       "required": ["currentValue", "recommendedValue", "reasoning", "confidence", "recommendedAction"],
@@ -603,7 +603,7 @@ const BASE_SCHEMA = {
         "recommendedAction": {
           "type": "string",
           "enum": ["ADD", "FIX", "REMOVE", "KEEP"],
-          "description": "The type of action recommended. ADD: previously empty/null field now has a value. FIX: existing value was modified. REMOVE: existing value should be cleared. KEEP: value remains unchanged"
+          "description": "The recommended action type based on comparing input to output. KEEP: use when input is empty/null and output should remain empty/null, OR when input is populated and output should remain unchanged. ADD: use when input is empty/null but output should be populated with a value. FIX: use when input is populated but output should contain a different value (modifications, corrections, or standardization applied). REMOVE: use when input is populated but output should be empty/null (typically because the input data was inaccurate, invalid, or test/placeholder data)."
         }
       },
       "required": ["currentValue", "recommendedValue", "reasoning", "confidence", "recommendedAction"],
@@ -633,7 +633,7 @@ const BASE_SCHEMA = {
         "recommendedAction": {
           "type": "string",
           "enum": ["ADD", "FIX", "REMOVE", "KEEP"],
-          "description": "The type of action recommended. ADD: previously empty/null field now has a value. FIX: existing value was modified. REMOVE: existing value should be cleared. KEEP: value remains unchanged"
+          "description": "The recommended action type based on comparing input to output. KEEP: use when input is empty/null and output should remain empty/null, OR when input is populated and output should remain unchanged. ADD: use when input is empty/null but output should be populated with a value. FIX: use when input is populated but output should contain a different value (modifications, corrections, or standardization applied). REMOVE: use when input is populated but output should be empty/null (typically because the input data was inaccurate, invalid, or test/placeholder data)."
         }
       },
       "required": ["currentValue", "recommendedValue", "reasoning", "confidence", "recommendedAction"],
@@ -718,26 +718,33 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // Validate API key and get user
-    const keyRecord = await prisma.apiKey.findUnique({
-      where: { key: apiKey },
-      include: {
-        user: {
-          select: {
-            id: true
-          }
+    // Validate API key and get user using service role (bypasses RLS)
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!,
+      {
+        auth: {
+          autoRefreshToken: false,
+          persistSession: false
         }
       }
-    })
+    )
 
-    if (!keyRecord) {
+    const { data: keyRecord, error: keyError } = await supabase
+      .from('api_keys')
+      .select('id, user_id')
+      .eq('key', apiKey)
+      .single()
+
+    if (keyError || !keyRecord) {
+      console.error('API key validation error:', keyError)
       return NextResponse.json(
         { error: "Invalid API key" },
         { status: 401 }
       )
     }
 
-    userId = keyRecord.user.id
+    userId = keyRecord.user_id
 
     // Check rate limits BEFORE doing anything else
     const rateLimitResult = await checkRateLimit(userId, "clean-endpoint")
@@ -763,13 +770,13 @@ export async function POST(req: NextRequest) {
     }
 
     // Check feature access with Autumn
-    const featureAccess = await checkFeatureAccess(userId, "company-cleaning")
+    const featureAccess = await checkFeatureAccess(userId, "api_credits")
 
     if (!featureAccess.allowed) {
       return NextResponse.json(
         {
-          error: "Feature access denied. Please upgrade your plan or purchase additional credits.",
-          remaining: featureAccess.remaining,
+          error: "Insufficient credits. Please purchase more credits to continue using the API.",
+          remaining: featureAccess.remaining || 0,
           limit: featureAccess.limit
         },
         { status: 402 }
@@ -795,19 +802,20 @@ export async function POST(req: NextRequest) {
 
     // Success! Track usage with Autumn
     try {
-      await trackFeatureUsage(userId, "company-cleaning", 1)
+      await trackFeatureUsage(userId, "api_credits", 1)
     } catch (trackError) {
       console.error("Failed to track usage with Autumn:", trackError)
-      // Continue - don't fail the request if tracking fails
+      return NextResponse.json(
+        { error: "Failed to track credit usage" },
+        { status: 500 }
+      )
     }
 
     // Update API key last used
-    await prisma.apiKey.update({
-      where: { id: keyRecord.id },
-      data: {
-        lastUsed: new Date()
-      }
-    })
+    await supabase
+      .from('api_keys')
+      .update({ last_used: new Date().toISOString() })
+      .eq('id', keyRecord.id)
 
     return NextResponse.json({
       data: cleanedData,
