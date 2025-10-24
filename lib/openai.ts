@@ -36,7 +36,7 @@ export async function callOpenAIWithStructuredOutput(
           strict: true
         }
       },
-      max_tokens: 4000
+      max_completion_tokens: 4000
     })
 
     const responseContent = completion.choices[0]?.message?.content
