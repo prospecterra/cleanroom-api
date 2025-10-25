@@ -36,14 +36,11 @@ export async function callOpenAIWithStructuredOutput(
           strict: true
         }
       },
-      max_completion_tokens: 4000
+      max_completion_tokens: 16000
     })
-
-    console.log("OpenAI completion response:", JSON.stringify(completion, null, 2))
 
     const responseContent = completion.choices[0]?.message?.content
     if (!responseContent) {
-      console.error("No content in response. Full completion:", completion)
       throw new Error("No response from OpenAI")
     }
 
