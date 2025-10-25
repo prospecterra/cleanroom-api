@@ -8,78 +8,123 @@ import { detectCRMFromHeaders, createCRMClient } from "@/lib/crm"
 // Base JSON schema template for company data cleaning
 const BASE_SCHEMA = {
   "type": "object",
-  "description": "Schema for CRM company data cleaning to standardize and improve data quality for company identification, location, and digital presence properties. CLEANING GUIDELINES: (1) If input data is correct and properly formatted, return it unchanged in the cleaned output. (2) If input data is incorrect, invalid, or poorly formatted AND you are highly confident of the correct value, return the corrected value in the cleaned output. (3) If input data is incorrect, invalid, or test/placeholder data AND you do not know the correct value, return null in the cleaned output. (4) If input data is empty/null AND you do not have sufficient information to populate it, return null in the cleaned output. (5) If input data is empty/null AND you are highly confident of the correct value based on other available context, return the correct value in the cleaned output. CONFIDENCE REQUIREMENT: Only provide corrected or populated values when you have high certainty - when in doubt, preserve existing valid data or return null rather than making uncertain assumptions.",
+  "description": "CRM company data cleaning schema. RULES: (1) Valid data → unchanged. (2) Invalid/poor format + high confidence → correct it. (3) Invalid/test/placeholder + unknown → null. (4) Empty + no info → null. (5) Empty + high confidence → populate. Only provide values with high certainty.",
   "properties": {
     "cleanedCompany": {
       "type": "object",
-      "description": "Object containing all cleaned company data fields",
       "properties": {
         "name": {
           "type": ["string", "null"],
-          "description": "The cleaned common or trade name of the company. Cleaned for proper case formatting, excessive whitespace removal, and standardization of common abbreviations while preserving intentional stylization (e.g., 'eBay', 'iPhone'). Test or fake company names (e.g., 'Test Company', 'Demo Inc', 'Fake Company Name Inc.') are identified and removed (set to null)."
+          "description": "Common/trade name. Proper case, no excess whitespace, standardized abbreviations. Test/fake names → null."
         },
         "legalName": {
           "type": ["string", "null"],
-          "description": "The cleaned official registered legal name of the company including appropriate corporate suffixes (Inc., LLC, Ltd., AB, GmbH, etc.). Cleaned for proper case formatting and standardization while maintaining legal accuracy. Includes the correct jurisdiction-specific corporate designation."
+          "description": "Official registered name with corporate suffix (Inc., LLC, Ltd., AB, GmbH)."
         },
         "description": {
           "type": ["string", "null"],
-          "description": "A cleaned brief description of the company's primary business activities, products, or services. Cleaned for proper grammar, punctuation, professional tone, and excessive marketing language. Concise yet informative."
+          "description": "Brief business description. Proper grammar, professional tone, concise."
         },
         "industry": {
           "type": ["string", "null"],
-          "description": "The cleaned primary industry or sector classification for the company. Cleaned to use standard industry naming conventions, fixed spelling errors, and mapped to recognized classification systems (e.g., NAICS, SIC). Consistent and specific."
+          "description": "Primary industry/sector. Standard naming conventions (NAICS, SIC)."
         },
         "website": {
           "type": ["string", "null"],
-          "description": "The cleaned primary company website URL (e.g., 'https://www.company.com'). Cleaned to standardize URL format, add missing protocols (https://), remove unnecessary parameters, and ensure proper domain structure."
+          "description": "Primary URL. Format: https://www.company.com. Add protocol if missing."
         },
         "city": {
           "type": ["string", "null"],
-          "description": "The cleaned city name for the company's headquarters or primary location. Cleaned for proper case formatting, spelling corrections, and standardization of city names. Abbreviations expanded to full names."
+          "description": "HQ city. Proper case, full names, no abbreviations."
         },
         "state": {
           "type": ["string", "null"],
-          "description": "The cleaned state, province, or region for the company's location. Cleaned to use standard two-letter state codes for US states (e.g., 'CA', 'NY') or full names for other regions, depending on context."
+          "description": "State/province/region. US: 2-letter codes (CA, NY). Others: full names."
         },
         "country": {
           "type": ["string", "null"],
-          "description": "The cleaned country name for the company's location. Cleaned to use standard country names (e.g., 'United States', 'United Kingdom') or ISO country codes (e.g., 'US', 'GB') as appropriate. Spelling corrections and standardization applied."
+          "description": "Country name (United States) or ISO code (US)."
         },
         "postalCode": {
           "type": ["string", "null"],
-          "description": "The cleaned postal/ZIP code for the company's location. Cleaned to proper format for the specific country (e.g., '12345' or '12345-6789' for US ZIP codes, 'SW1A 1AA' for UK postcodes). Invalid or placeholder codes removed."
+          "description": "Postal/ZIP code. Country-appropriate format. Invalid → null."
         },
         "phone": {
           "type": ["string", "null"],
-          "description": "The cleaned primary phone number for the company. Cleaned to standardized international format with country code (e.g., '+1-555-123-4567'), proper spacing, and removal of invalid or placeholder numbers."
+          "description": "Primary phone. International format with country code (+1-555-123-4567)."
         },
         "street": {
           "type": ["string", "null"],
-          "description": "The cleaned street address for the company's location. Cleaned for proper case formatting, standardization of abbreviations (St., Ave., Blvd.), and removal of unnecessary punctuation. Complete street address including number."
+          "description": "Street address. Proper case, standardized abbreviations (St., Ave.)."
         },
         "linkedIn": {
           "type": ["string", "null"],
-          "description": "The cleaned full URL to the company's official LinkedIn page (e.g., 'https://www.linkedin.com/company/companyname'). Cleaned to standardize URL format, add missing protocols, and ensure proper LinkedIn URL structure."
+          "description": "LinkedIn company page URL. Format: https://www.linkedin.com/company/name"
         },
         "facebook": {
           "type": ["string", "null"],
-          "description": "The cleaned full URL to the company's official Facebook page (e.g., 'https://www.facebook.com/companyname'). Cleaned to standardize URL format, add missing protocols, and ensure proper Facebook URL structure."
+          "description": "Facebook page URL. Format: https://www.facebook.com/name"
         },
         "instagram": {
           "type": ["string", "null"],
-          "description": "The cleaned full URL to the company's official Instagram account (e.g., 'https://www.instagram.com/companyname'). Cleaned to standardize URL format, add missing protocols, and ensure proper Instagram URL structure."
+          "description": "Instagram account URL. Format: https://www.instagram.com/name"
         },
         "twitter": {
           "type": ["string", "null"],
-          "description": "The cleaned full URL to the company's official Twitter/X account (e.g., 'https://twitter.com/companyname' or 'https://x.com/companyname'). Cleaned to standardize URL format, add missing protocols, and ensure proper Twitter/X URL structure."
+          "description": "Twitter/X account URL. Format: https://twitter.com/name or https://x.com/name"
         }
+      },
+      "required": ["name", "legalName", "description", "industry", "website", "city", "state", "country", "postalCode", "phone", "street", "linkedIn", "facebook", "instagram", "twitter"],
+      "additionalProperties": false
+    },
+    "reasoning": {
+      "type": "object",
+      "description": "3-sentence explanations per field: (1) original value/issue, (2) action taken, (3) final result and why correct.",
+      "properties": {
+        "name": { "type": "string" },
+        "legalName": { "type": "string" },
+        "description": { "type": "string" },
+        "industry": { "type": "string" },
+        "website": { "type": "string" },
+        "city": { "type": "string" },
+        "state": { "type": "string" },
+        "country": { "type": "string" },
+        "postalCode": { "type": "string" },
+        "phone": { "type": "string" },
+        "street": { "type": "string" },
+        "linkedIn": { "type": "string" },
+        "facebook": { "type": "string" },
+        "instagram": { "type": "string" },
+        "twitter": { "type": "string" }
+      },
+      "required": ["name", "legalName", "description", "industry", "website", "city", "state", "country", "postalCode", "phone", "street", "linkedIn", "facebook", "instagram", "twitter"],
+      "additionalProperties": false
+    },
+    "confidence": {
+      "type": "object",
+      "description": "Confidence per field. HIGH=strong evidence, MEDIUM=reasonable certainty, LOW=limited confidence/assumptions.",
+      "properties": {
+        "name": { "type": "string", "enum": ["LOW", "MEDIUM", "HIGH"] },
+        "legalName": { "type": "string", "enum": ["LOW", "MEDIUM", "HIGH"] },
+        "description": { "type": "string", "enum": ["LOW", "MEDIUM", "HIGH"] },
+        "industry": { "type": "string", "enum": ["LOW", "MEDIUM", "HIGH"] },
+        "website": { "type": "string", "enum": ["LOW", "MEDIUM", "HIGH"] },
+        "city": { "type": "string", "enum": ["LOW", "MEDIUM", "HIGH"] },
+        "state": { "type": "string", "enum": ["LOW", "MEDIUM", "HIGH"] },
+        "country": { "type": "string", "enum": ["LOW", "MEDIUM", "HIGH"] },
+        "postalCode": { "type": "string", "enum": ["LOW", "MEDIUM", "HIGH"] },
+        "phone": { "type": "string", "enum": ["LOW", "MEDIUM", "HIGH"] },
+        "street": { "type": "string", "enum": ["LOW", "MEDIUM", "HIGH"] },
+        "linkedIn": { "type": "string", "enum": ["LOW", "MEDIUM", "HIGH"] },
+        "facebook": { "type": "string", "enum": ["LOW", "MEDIUM", "HIGH"] },
+        "instagram": { "type": "string", "enum": ["LOW", "MEDIUM", "HIGH"] },
+        "twitter": { "type": "string", "enum": ["LOW", "MEDIUM", "HIGH"] }
       },
       "required": ["name", "legalName", "description", "industry", "website", "city", "state", "country", "postalCode", "phone", "street", "linkedIn", "facebook", "instagram", "twitter"],
       "additionalProperties": false
     }
   },
-  "required": ["cleanedCompany"],
+  "required": ["cleanedCompany", "reasoning", "confidence"],
   "additionalProperties": false
 }
 
@@ -103,10 +148,10 @@ function buildDynamicSchema(input: CompanyInput) {
   // Add user-specific property rules if provided
   if (input.cleanPropertyRules) {
     for (const [key, userRule] of Object.entries(input.cleanPropertyRules)) {
-      // Only add rules for properties that exist in the base schema
-      if (schema.properties[key]) {
-        const currentDescription = schema.properties[key].description
-        schema.properties[key].description = `${currentDescription}\n\nIMPORTANT: Always prioritize the user-provided instructions below over the general description above.\n\nUser instructions: ${userRule}`
+      // Only add rules for properties that exist in the cleanedCompany properties
+      if (schema.properties.cleanedCompany?.properties[key]) {
+        const currentDescription = schema.properties.cleanedCompany.properties[key].description
+        schema.properties.cleanedCompany.properties[key].description = `${currentDescription}\n\nIMPORTANT: Always prioritize the user-provided instructions below over the general description above.\n\nUser instructions: ${userRule}`
       }
     }
   }
@@ -252,12 +297,11 @@ export async function POST(req: NextRequest) {
 
           // Extract cleaned properties from OpenAI response
           const properties: Record<string, any> = {}
-          for (const [key, value] of Object.entries(cleanedData)) {
-            if (value && typeof value === 'object' && 'recommendedValue' in value) {
-              const fieldData = value as { recommendedValue: any }
+          if (cleanedData.cleanedCompany && typeof cleanedData.cleanedCompany === 'object') {
+            for (const [key, value] of Object.entries(cleanedData.cleanedCompany)) {
               // Only include non-null values
-              if (fieldData.recommendedValue !== null) {
-                properties[key] = fieldData.recommendedValue
+              if (value !== null) {
+                properties[key] = value
               }
             }
           }
@@ -301,11 +345,12 @@ export async function POST(req: NextRequest) {
       .eq('id', keyRecord.id)
 
     return NextResponse.json({
-      data: {
-        company: body.company,
-        ...cleanedData
-      },
-      remaining: featureAccess.remaining ? featureAccess.remaining - 1 : undefined,
+      company: body.company,
+      ...cleanedData,
+      cleanRules: body.cleanRules || null,
+      cleanPropertyRules: body.cleanPropertyRules || null,
+      creditCost: 1,
+      creditsRemaining: featureAccess.remaining ? featureAccess.remaining - 1 : 0,
       recordUpdated: crmUpdateStatus?.success === true,
       ...(crmUpdateStatus && { crmUpdate: crmUpdateStatus })
     })
