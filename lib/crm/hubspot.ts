@@ -1,4 +1,4 @@
-import { CRMClient, UpdateCompanyParams, DeleteCompanyParams } from "./types"
+import { CRMClient, UpdateCompanyParams, DeleteCompanyParams, GetCompanyResult } from "./types"
 
 /**
  * HubSpot CRM client
@@ -61,6 +61,58 @@ export class HubSpotClient implements CRMClient {
       throw new Error(
         `HubSpot API error (${response.status}): ${error}`
       )
+    }
+  }
+
+  /**
+   * Check if a company record exists in HubSpot
+   * GET /crm/v3/objects/companies/{companyId}
+   */
+  async companyExists(recordId: string): Promise<boolean> {
+    try {
+      const response = await fetch(
+        `${this.baseUrl}/crm/v3/objects/companies/${recordId}`,
+        {
+          method: "GET",
+          headers: {
+            "Authorization": `Bearer ${this.apiKey}`,
+          },
+        }
+      )
+
+      return response.ok
+    } catch (error) {
+      console.error("Error checking company existence:", error)
+      return false
+    }
+  }
+
+  /**
+   * Get a company record from HubSpot
+   * GET /crm/v3/objects/companies/{companyId}
+   */
+  async getCompany(recordId: string): Promise<GetCompanyResult> {
+    const response = await fetch(
+      `${this.baseUrl}/crm/v3/objects/companies/${recordId}`,
+      {
+        method: "GET",
+        headers: {
+          "Authorization": `Bearer ${this.apiKey}`,
+        },
+      }
+    )
+
+    if (!response.ok) {
+      const error = await response.text()
+      throw new Error(
+        `HubSpot API error (${response.status}): ${error}`
+      )
+    }
+
+    const data = await response.json()
+    return {
+      id: data.id,
+      properties: data.properties || {}
     }
   }
 }

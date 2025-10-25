@@ -21,7 +21,7 @@ export async function callOpenAIWithStructuredOutput(
 
   try {
     const completion = await client.chat.completions.create({
-      model: "gpt-5-mini",
+      model: "gpt-5-nano-2025-08-07",
       messages: [
         {
           role: "user",
@@ -39,8 +39,11 @@ export async function callOpenAIWithStructuredOutput(
       max_completion_tokens: 4000
     })
 
+    console.log("OpenAI completion response:", JSON.stringify(completion, null, 2))
+
     const responseContent = completion.choices[0]?.message?.content
     if (!responseContent) {
+      console.error("No content in response. Full completion:", completion)
       throw new Error("No response from OpenAI")
     }
 

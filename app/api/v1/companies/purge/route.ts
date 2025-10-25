@@ -80,13 +80,56 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    const { company, purgeRules, purgePropertyRules, deleteRecord, recordId } = body
+    const {
+      company,
+      purgeRules,
+      purgePropertyRules,
+      deleteRecord = false,
+      recordId
+    } = body
 
     if (!company || typeof company !== "object") {
       return NextResponse.json(
         { error: "Company object is required" },
         { status: 400 }
       )
+    }
+
+    // Validate CRM integration requirements BEFORE calling AI
+    if (deleteRecord) {
+      if (!recordId || typeof recordId !== "string" || !recordId.trim()) {
+        return NextResponse.json(
+          { error: "recordId is required when deleteRecord is true" },
+          { status: 400 }
+        )
+      }
+
+      const crmCredentials = detectCRMFromHeaders(req.headers)
+      if (!crmCredentials) {
+        return NextResponse.json(
+          { error: "CRM API key required when deleteRecord is true. Please provide x-hubspot-api-key header." },
+          { status: 400 }
+        )
+      }
+
+      // Verify the record exists in the CRM before calling AI
+      try {
+        const crmClient = createCRMClient(crmCredentials)
+        const exists = await crmClient.companyExists(recordId)
+
+        if (!exists) {
+          return NextResponse.json(
+            { error: `Company record with ID '${recordId}' not found in CRM` },
+            { status: 404 }
+          )
+        }
+      } catch (verifyError) {
+        console.error("Error verifying company record:", verifyError)
+        return NextResponse.json(
+          { error: "Failed to verify company record in CRM" },
+          { status: 500 }
+        )
+      }
     }
 
     // Build system prompt
@@ -141,7 +184,7 @@ IMPORTANT: These custom purge rules take absolute precedence over all default cr
     // Call OpenAI with structured output
     const openai = getOpenAIClient()
     const completion = await openai.chat.completions.create({
-      model: "gpt-5-mini",
+      model: "gpt-5-nano-2025-08-07",
       messages: [
         {
           role: "system",
@@ -175,7 +218,7 @@ IMPORTANT: These custom purge rules take absolute precedence over all default cr
     }
 
     // CRM Integration - Delete record if requested and recommended
-    let crmDeleteStatus: { success: boolean; error?: string } | undefined
+    let recordDeleted = false
     if (deleteRecord && recordId && analysis.recommendedAction === "REMOVE") {
       const crmCredentials = detectCRMFromHeaders(req.headers)
 
@@ -188,23 +231,16 @@ IMPORTANT: These custom purge rules take absolute precedence over all default cr
             recordId: recordId
           })
 
-          crmDeleteStatus = { success: true }
+          recordDeleted = true
         } catch (crmError) {
           console.error("CRM deletion error:", crmError)
           const errorMessage = crmError instanceof Error ? crmError.message : "Unknown CRM error"
-          crmDeleteStatus = { success: false, error: errorMessage }
-          // Don't fail the whole request if CRM deletion fails
+
+          return NextResponse.json(
+            { error: `Failed to delete record from CRM: ${errorMessage}` },
+            { status: 500 }
+          )
         }
-      } else {
-        crmDeleteStatus = {
-          success: false,
-          error: "No CRM credentials provided in headers (e.g., x-hubspot-api-key)"
-        }
-      }
-    } else if (deleteRecord && recordId && analysis.recommendedAction === "KEEP") {
-      crmDeleteStatus = {
-        success: false,
-        error: "Record not deleted because analysis recommended KEEP"
       }
     }
 
@@ -225,10 +261,10 @@ IMPORTANT: These custom purge rules take absolute precedence over all default cr
       ...analysis,
       purgeRules: purgeRules || null,
       purgePropertyRules: purgePropertyRules || null,
+      recordId: recordId || null,
       creditCost: 1,
       creditsRemaining: updatedAccess.remaining || 0,
-      recordDeleted: crmDeleteStatus?.success === true,
-      ...(crmDeleteStatus && { crmDelete: crmDeleteStatus })
+      recordDeleted
     })
   } catch (error) {
     console.error("Error in purge analysis:", error)

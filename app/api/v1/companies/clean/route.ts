@@ -204,6 +204,47 @@ export async function POST(req: NextRequest) {
       )
     }
 
+    // Set defaults for optional fields
+    const updateRecord = body.updateRecord ?? false
+    const recordId = body.recordId
+
+    // Validate CRM integration requirements BEFORE calling AI
+    if (updateRecord) {
+      if (!recordId || typeof recordId !== "string" || !recordId.trim()) {
+        return NextResponse.json(
+          { error: "recordId is required when updateRecord is true" },
+          { status: 400 }
+        )
+      }
+
+      const crmCredentials = detectCRMFromHeaders(req.headers)
+      if (!crmCredentials) {
+        return NextResponse.json(
+          { error: "CRM API key required when updateRecord is true. Please provide x-hubspot-api-key header." },
+          { status: 400 }
+        )
+      }
+
+      // Verify the record exists in the CRM before calling AI
+      try {
+        const crmClient = createCRMClient(crmCredentials)
+        const exists = await crmClient.companyExists(recordId)
+
+        if (!exists) {
+          return NextResponse.json(
+            { error: `Company record with ID '${recordId}' not found in CRM` },
+            { status: 404 }
+          )
+        }
+      } catch (verifyError) {
+        console.error("Error verifying company record:", verifyError)
+        return NextResponse.json(
+          { error: "Failed to verify company record in CRM" },
+          { status: 500 }
+        )
+      }
+    }
+
     // Validate API key and get user using service role (bypasses RLS)
     const supabase = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -287,42 +328,63 @@ export async function POST(req: NextRequest) {
     }
 
     // CRM Integration - Update record if requested
-    let crmUpdateStatus: { success: boolean; error?: string } | undefined
-    if (body.updateRecord && body.recordId) {
+    let recordUpdated = false
+    if (updateRecord && recordId) {
       const crmCredentials = detectCRMFromHeaders(req.headers)
 
       if (crmCredentials) {
         try {
           const crmClient = createCRMClient(crmCredentials)
 
-          // Extract cleaned properties from OpenAI response
+          // First, fetch the existing company record to see what properties exist
+          const existingCompany = await crmClient.getCompany(recordId)
+          const existingProperties = new Set(Object.keys(existingCompany.properties))
+
+          // Extract cleaned properties from OpenAI response and compare with original
           const properties: Record<string, any> = {}
           if (cleanedData.cleanedCompany && typeof cleanedData.cleanedCompany === 'object') {
-            for (const [key, value] of Object.entries(cleanedData.cleanedCompany)) {
-              // Only include non-null values
-              if (value !== null) {
-                properties[key] = value
+            for (const [key, cleanedValue] of Object.entries(cleanedData.cleanedCompany)) {
+              // Get the original value from the input company object
+              const originalValue = body.company[key]
+
+              // Normalize values for comparison
+              const normalizedOriginal = originalValue === undefined || originalValue === null ? null : String(originalValue).trim()
+              const normalizedCleaned = cleanedValue === null ? null : String(cleanedValue).trim()
+
+              // Convert property name to lowercase for HubSpot (e.g., legalName -> legalname)
+              const hubspotPropertyName = key.toLowerCase()
+
+              // Only include properties that:
+              // 1. Have a non-null cleaned value
+              // 2. Are different from the original value
+              // 3. Exist in the HubSpot company record
+              if (
+                normalizedCleaned !== null &&
+                normalizedOriginal !== normalizedCleaned &&
+                existingProperties.has(hubspotPropertyName)
+              ) {
+                properties[hubspotPropertyName] = cleanedValue
               }
             }
           }
 
-          // Update CRM record
-          await crmClient.updateCompany({
-            recordId: body.recordId,
-            properties
-          })
+          // Only make the API call if there are properties to update
+          if (Object.keys(properties).length > 0) {
+            await crmClient.updateCompany({
+              recordId: recordId,
+              properties
+            })
 
-          crmUpdateStatus = { success: true }
+            recordUpdated = true
+          }
         } catch (crmError) {
           console.error("CRM update error:", crmError)
           const errorMessage = crmError instanceof Error ? crmError.message : "Unknown CRM error"
-          crmUpdateStatus = { success: false, error: errorMessage }
-          // Don't fail the whole request if CRM update fails
-        }
-      } else {
-        crmUpdateStatus = {
-          success: false,
-          error: "No CRM credentials provided in headers (e.g., x-hubspot-api-key)"
+
+          return NextResponse.json(
+            { error: `Failed to update record in CRM: ${errorMessage}` },
+            { status: 500 }
+          )
         }
       }
     }
@@ -349,10 +411,10 @@ export async function POST(req: NextRequest) {
       ...cleanedData,
       cleanRules: body.cleanRules || null,
       cleanPropertyRules: body.cleanPropertyRules || null,
+      recordId: recordId || null,
       creditCost: 1,
       creditsRemaining: featureAccess.remaining ? featureAccess.remaining - 1 : 0,
-      recordUpdated: crmUpdateStatus?.success === true,
-      ...(crmUpdateStatus && { crmUpdate: crmUpdateStatus })
+      recordUpdated
     })
 
   } catch (error) {
