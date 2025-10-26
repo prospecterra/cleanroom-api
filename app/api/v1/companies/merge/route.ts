@@ -4,142 +4,115 @@ import { checkFeatureAccess, trackFeatureUsage } from "@/lib/autumn"
 import { getOpenAIClient } from "@/lib/openai"
 import { detectCRMFromHeaders, createCRMClient } from "@/lib/crm"
 
+// Clean filter values to remove JSON syntax characters that AI sometimes includes
+function cleanFilterValue(value: string | null): string | null {
+  if (!value || typeof value !== 'string') return value
+  // Remove JSON syntax characters: {, }, [, ], ,, ", '
+  return value.replace(/[{}\[\],"']+$/g, '').trim()
+}
+
 // Step 1: Duplicate search filter generation schema
 const DUPLICATE_SEARCH_SCHEMA = {
   "type": "object",
-  "description": "Schema for CRM company duplicate detection search filters (Part 1 of merge process). This structure generates HubSpot API v3 Company Search filters to identify potential duplicate companies based on provided duplicate rules or best practice detection strategies. The output defines search criteria that will be executed against the CRM to find companies matching specific property combinations. Multiple filterGroups are combined with OR logic (any group can match), while multiple filters within a filterGroup are combined with AND logic (all filters must match). When duplicateRules are not provided, the system intelligently applies best practice duplicate detection based on available data: Priority 1 (strongest) - same domain, or same name AND website/domain; Priority 2 (medium) - same name AND city, same phone, or fuzzy name matching; Priority 3 (weak) - same address AND city, or same website alone. IMPORTANT: Max 5 filter groups are allowed.",
+  "description": "Generate HubSpot search filters. Extract clean property values from input - NO JSON syntax chars in values. OR logic between filterGroups, AND within. Max 5 groups. Priority 1=domain; Priority 2=name+city/phone/fuzzy; Priority 3=address+city.",
   "properties": {
     "filterGroups": {
       "type": "array",
-      "description": "An array of filter groups where each group represents a distinct set of conditions for identifying potential duplicates. Multiple filterGroups are combined with OR logic, meaning a company matches if it satisfies ANY of the filter groups. For example, a company could be considered a duplicate if it has the same domain (filterGroup 1) OR the same phone number (filterGroup 2). Each filterGroup should represent a complete, independent criterion for duplicate detection. Use multiple filterGroups to implement 'OR' logic between different duplicate detection strategies.",
+      "description": "Filter groups combined with OR logic. Each group is independent duplicate criterion.",
       "items": {
         "type": "object",
-        "description": "A single filter group containing one or more filters that work together. All filters within a filterGroup are combined with AND logic, meaning a company must match ALL filters in the group to be considered a potential duplicate. For example, to find companies with the same name AND city, both filters would be in a single filterGroup. Use multiple filters in a group to implement 'AND' logic for compound matching criteria.",
+        "description": "Single filter group with AND logic between all filters.",
         "properties": {
           "filters": {
             "type": "array",
-            "description": "An array of individual filter conditions that define the search criteria for this filter group. Each filter specifies a property to check, an operator for comparison, and a value to match against. All filters in this array must be satisfied (AND logic) for a company to match this filterGroup. Common duplicate detection patterns include: exact matches using EQ operator for properties like domain, name, or phone; fuzzy matches using CONTAINS_TOKEN for similar company names; compound matches combining multiple properties like name + city or name + website. Skip filters for properties that are null, empty, or missing in the input company record.",
+            "description": "Filters within group (AND logic). Skip null/empty properties.",
             "items": {
               "type": "object",
-              "description": "A single filter condition that specifies a property-based search criterion. Defines which company property to search on (propertyName), how to compare it (operator), and what value(s) to compare against (value or values). This represents one atomic condition in the duplicate detection logic, such as 'domain equals acme.com' or 'name contains token Microsoft'. When constructing filters, always use exact HubSpot property names (e.g., 'name', 'domain', 'website', 'phone', 'city', 'state', 'zip', 'country') and select operators appropriate for the property type and matching strategy.",
+              "description": "Single filter: property + operator + value. VALUE MUST BE CLEAN STRING.",
               "properties": {
                 "propertyName": {
                   "type": "string",
-                  "description": "The exact HubSpot company property name to filter on. Must use standard HubSpot property names such as: 'name' (company name), 'domain' (primary domain), 'website' (website URL), 'phone' (phone number), 'address' (street address), 'city' (city), 'state' (state/region), 'zip' (postal code), 'country' (country), 'industry' (industry), 'numberofemployees' (employee count), 'annualrevenue' (annual revenue). For custom properties, use the exact internal property name as it appears in HubSpot. Property names are typically lowercase with no spaces. This field determines which company attribute will be used for duplicate matching in this filter condition."
+                  "description": "HubSpot property: name/domain/website/phone/city/state/zip/country/address. Lowercase, no spaces."
                 },
                 "operator": {
                   "type": "string",
-                  "description": "The comparison operator that defines how to match the property value. Select the appropriate operator based on the duplicate detection strategy: EQ (equals) - exact match, most common for duplicate detection on domain, phone, or specific values; CONTAINS_TOKEN - partial/fuzzy match for text fields like company names, useful for matching 'Microsoft' in 'Microsoft Corporation'; NEQ (not equals) - exclude specific values; LT/LTE/GT/GTE - numeric comparisons for ranges; BETWEEN - range matching requiring highValue; IN/NOT_IN - match against multiple values using values array; HAS_PROPERTY/NOT_HAS_PROPERTY - check property existence. For most duplicate detection use cases, EQ (exact match) and CONTAINS_TOKEN (fuzzy match) are the primary operators.",
-                  "enum": [
-                    "EQ",
-                    "NEQ",
-                    "LT",
-                    "LTE",
-                    "GT",
-                    "GTE",
-                    "BETWEEN",
-                    "IN",
-                    "NOT_IN",
-                    "HAS_PROPERTY",
-                    "NOT_HAS_PROPERTY",
-                    "CONTAINS_TOKEN"
-                  ]
+                  "description": "EQ=exact match, CONTAINS_TOKEN=fuzzy text, IN=multiple values, HAS_PROPERTY=exists check.",
+                  "enum": ["EQ", "NEQ", "LT", "LTE", "GT", "GTE", "BETWEEN", "IN", "NOT_IN", "HAS_PROPERTY", "NOT_HAS_PROPERTY", "CONTAINS_TOKEN"]
                 },
                 "value": {
                   "type": ["string", "null"],
-                  "description": "The value to compare against for this filter condition. This should be extracted from the input company record for the corresponding propertyName. For example, if propertyName is 'domain' and the input company has domain 'acme.com', then value should be 'acme.com'. Use null when using operators that don't require a single value (like HAS_PROPERTY, NOT_HAS_PROPERTY) or when using the values array for IN/NOT_IN operators. For website/domain properties, extract just the domain portion without protocol or paths. For fuzzy matching with CONTAINS_TOKEN, extract the core/significant part of the text (e.g., 'Microsoft' from 'Microsoft Corporation'). Do not include filters for properties where the input company record has null, empty, or missing values."
+                  "description": "Clean value only. CORRECT: 'acme.com'. WRONG: 'acme.com}' or 'acme.com}]},{'. Stop at property value end. No { } [ ] , \" ' characters. Strip http/https. Null for HAS_PROPERTY/NOT_HAS_PROPERTY/IN/NOT_IN."
                 },
                 "values": {
                   "type": ["array", "null"],
-                  "description": "An array of values to compare against, used exclusively with IN and NOT_IN operators for matching against multiple possible values. For example, to find companies matching any of several domains, use IN operator with values array containing all domains. Use null for single-value operators (EQ, CONTAINS_TOKEN, etc.) where the 'value' field should be used instead. This is useful for duplicate detection scenarios where a company might match multiple variations (e.g., different phone number formats, multiple domain variations, or various name spellings). Each item in the array should be a string value to match against.",
+                  "description": "Array of strings for IN/NOT_IN operators only. Null otherwise.",
                   "items": {
                     "type": "string"
                   }
                 }
               },
-              "required": [
-                "propertyName",
-                "operator",
-                "value",
-                "values"
-              ],
+              "required": ["propertyName", "operator", "value", "values"],
               "additionalProperties": false
             }
           }
         },
-        "required": [
-          "filters"
-        ],
+        "required": ["filters"],
         "additionalProperties": false
       }
     }
   },
-  "required": [
-    "filterGroups"
-  ],
+  "required": ["filterGroups"],
   "additionalProperties": false
 }
 
 // Step 2: Merge decision schema
 const MERGE_DECISION_SCHEMA = {
   "type": "object",
-  "description": "Schema for CRM company duplicate merge analysis (Part 2 of merge process). This structure determines whether the current company record being analyzed should remain as the primary record (KEEP) or be merged into another duplicate record (MERGE), and identifies which record should serve as the master/primary record. The decision is based on duplicate validation followed by primary record selection using either custom primaryRules or industry-standard CRM best practices. Best practices evaluate records using a weighted scoring system: Data Completeness (40%), Data Quality (25%), Engagement Score (20%), Source Reliability (10%), and Historical Preservation (5%). IMPORTANT TIEBREAKER RULE: When two or more records are essentially equivalent in quality, completeness, and engagement (scores within 5 points of each other), the record with the earliest created date should be selected as the primary record to preserve historical relationship data and maintain consistency. The recommendedAction describes what happens to the CURRENT record being analyzed: KEEP means this record remains primary, MERGE means this record should be merged INTO the primaryRecordId record.",
+  "description": "Decide KEEP vs MERGE for current record. Scoring: completeness 40%, quality 25%, engagement 20%, source 10%, history 5%. TIEBREAKER: oldest created date wins.",
   "properties": {
     "recommendedAction": {
       "type": "string",
-      "description": "The recommended action for the current company record being analyzed, automatically determined based on which record is selected as primary. Use KEEP when the current record should remain as the primary/master record (primaryRecordId equals the input company ID). Use MERGE when the current record should be merged INTO another duplicate record (primaryRecordId is one of the duplicate record IDs). The action ensures no data loss occurs during the merge, with all unique information from the current record being preserved in the primary record. This decision considers data preservation, relationship integrity (associated contacts, deals, activities), conflicting data between records, and real-world business scenarios like subsidiaries, acquisitions, or franchises that may appear similar but should remain separate.",
-      "enum": [
-        "MERGE",
-        "KEEP"
-      ]
+      "description": "KEEP=current record stays primary (primaryRecordId=current). MERGE=current merges into primaryRecordId (another duplicate).",
+      "enum": ["MERGE", "KEEP"]
     },
     "reasoning": {
       "type": "string",
-      "description": "A detailed, comprehensive explanation of the merge recommendation that justifies the decision to a human reviewer. For MERGE recommendations, explain: (1) Why the records are confirmed duplicates, (2) Why the primary record is superior, (3) What will happen. For KEEP recommendations, explain: (1) Why the current record is the best choice, (2) Why it is better than duplicates, (3) Conclusion. For non-duplicates kept separate, explain why they are different entities. When using default best practices, reference the scoring system explicitly. When records are essentially equivalent in quality and the tiebreaker rule is applied, explicitly state that the oldest record (earliest created date) was selected to preserve historical relationship data. Include relevant data points, timestamps, source types, and any conflicts or special considerations. The reasoning should provide sufficient detail to understand and validate the decision without requiring access to the raw data."
+      "description": "2-3 sentences: (1) Why duplicates/not, (2) Why this primary choice, (3) Key factors. Include relevant dates/scores if using tiebreaker."
     },
     "confidence": {
       "type": "string",
-      "description": "The confidence level in the merge recommendation based on the strength of duplicate indicators and clarity of the primary selection. HIGH confidence: Clear duplicate indicators present (same domain, tax ID, or phone number) AND significant data overlap (over 80% matching fields) AND no conflicting critical information AND clear primary record selection based on rules or obvious data superiority. MEDIUM confidence: Good duplicate indicators but with some differences AND moderate data overlap (50-80% matching) AND minor conflicts in non-critical fields AND primary selection involves trade-offs. LOW confidence: Weak duplicate indicators (only name similarity or location match) OR limited data overlap (less than 50% matching) OR conflicts in important fields OR unclear if records represent truly the same entity OR difficult primary selection with no clear winner. Confidence should reflect both the certainty that records are duplicates AND the certainty about which should be primary.",
-      "enum": [
-        "LOW",
-        "MEDIUM",
-        "HIGH"
-      ]
+      "description": "HIGH=clear indicators (domain/phone match) + 80%+ overlap. MEDIUM=50-80% overlap + minor conflicts. LOW=weak indicators/conflicts.",
+      "enum": ["LOW", "MEDIUM", "HIGH"]
     },
     "primaryRecordId": {
       "type": "string",
-      "description": "The unique identifier of the record that should be preserved as the primary/master record after the merge operation. This is ALWAYS included in the response regardless of the recommendedAction. When recommendedAction is KEEP, this will equal the input company ID (indicating the current record is best). When recommendedAction is MERGE, this will be the ID of one of the duplicate records (indicating that record is superior and the current record should merge into it). The primary record is selected based on either custom primaryRules (when provided) or industry-standard CRM best practices that evaluate: data completeness, data quality, engagement level, source reliability, and historical preservation. CRITICAL TIEBREAKER: When multiple records have essentially equivalent scores (within 5 points of each other) across all evaluation criteria, the record with the earliest created date (oldest record) must be selected as the primary record. This preserves the longest relationship history and maintains data continuity. In cases of uncertainty or non-duplicate records, this should be the current company ID with a KEEP action and LOW confidence, recommending manual review."
+      "description": "ID of primary record. Equals current ID if KEEP, duplicate ID if MERGE. TIEBREAKER: when scores within 5pts, select oldest createdate."
     }
   },
-  "required": [
-    "recommendedAction",
-    "reasoning",
-    "confidence",
-    "primaryRecordId"
-  ],
+  "required": ["recommendedAction", "reasoning", "confidence", "primaryRecordId"],
   "additionalProperties": false
 }
 
 // Step 3: Field-by-field merge schema
 const MERGE_FIELD_SCHEMA = {
   "type": "object",
-  "description": "Schema for CRM company field-by-field merge analysis (Part 3 of merge process). Evaluates each property from the current record to determine if it should be added/updated to the primary record. Analyzes value, quality, and relevance to ensure best data is preserved. Only properties that improve the primary record should be recommended for update.",
+  "description": "Field-level merge analysis. Only update primary with better/newer values from current.",
   "properties": {
     "primaryRecordPropertiesToUpdate": {
       "type": "object",
-      "description": "Properties from current record to merge into primary, mapped as property name to new value. Only include where current has better/newer data than primary. Example: {'phone': '+1-555-0123', 'website': 'https://newcompany.com'}. Empty object if no updates needed.",
+      "description": "Property map: {propertyName: newValue}. Only include if current > primary. Empty {} if no updates. Example: {\"phone\":\"+1-555-0123\"}.",
       "additionalProperties": {
         "type": "string"
       }
     },
     "reasoning": {
       "type": "string",
-      "description": "1-2 sentence merge strategy and key property decisions."
+      "description": "1-2 sentences: merge strategy + key decisions."
     },
     "confidence": {
       "type": "string",
       "enum": ["LOW", "MEDIUM", "HIGH"],
-      "description": "HIGH=clear merge path, MEDIUM=some ambiguity, LOW=uncertain."
+      "description": "HIGH=clear path, MEDIUM=ambiguity, LOW=uncertain."
     }
   },
   "required": ["primaryRecordPropertiesToUpdate", "reasoning", "confidence"],
@@ -253,7 +226,7 @@ export async function POST(req: NextRequest) {
       messages: [
         {
           role: "user",
-          content: JSON.stringify(company, null, 2),
+          content: JSON.stringify(company),
         },
       ],
       response_format: {
@@ -276,6 +249,19 @@ export async function POST(req: NextRequest) {
     }
 
     const duplicateSearch = JSON.parse(step1Content)
+
+    // Clean filter values to remove any JSON syntax characters
+    if (duplicateSearch.filterGroups) {
+      for (const group of duplicateSearch.filterGroups) {
+        if (group.filters) {
+          for (const filter of group.filters) {
+            if (filter.value) {
+              filter.value = cleanFilterValue(filter.value)
+            }
+          }
+        }
+      }
+    }
 
     totalAiUsage.step1DuplicateSearch = {
       inputTokens: step1Completion.usage?.prompt_tokens || 0,
@@ -373,7 +359,7 @@ export async function POST(req: NextRequest) {
       messages: [
         {
           role: "user",
-          content: JSON.stringify(mergeAnalysisInput, null, 2),
+          content: JSON.stringify(mergeAnalysisInput),
         },
       ],
       response_format: {
@@ -481,7 +467,7 @@ export async function POST(req: NextRequest) {
       messages: [
         {
           role: "user",
-          content: JSON.stringify(fieldMergeInput, null, 2),
+          content: JSON.stringify(fieldMergeInput),
         },
       ],
       response_format: {
