@@ -7,21 +7,21 @@ import { detectCRMFromHeaders, createCRMClient } from "@/lib/crm"
 // JSON schema for purge analysis
 const PurgeAnalysisSchema = {
   "type": "object",
-  "description": "CRM company purge evaluation. INPUT: (1) company object with data to evaluate, (2) purgeRules string with general removal criteria, (3) purgePropertyRules object mapping properties to specific removal criteria. OUTPUT: Recommendation to REMOVE or KEEP based on rule evaluation.",
+  "description": "Evaluate company for CRM purge. BE CONSERVATIVE: only REMOVE obvious test/fake data. KEEP legitimate records even if incomplete.",
   "properties": {
     "recommendedAction": {
       "type": "string",
       "enum": ["REMOVE", "KEEP"],
-      "description": "Recommendation based on: DEFAULT CRITERIA (auto-applied): test data (names with test/demo/example/sample/asdf/dummy, domains like test.com/example.com/localhost); fake data (empty names, numbers-only names, 'Fake Company'/'Mickey Mouse Inc'); unusable records (no name AND no domain, severe corruption). CUSTOM RULES (override defaults): purgeRules for general conditions (e.g., '≤100 employees', 'no activity 365+ days'); purgePropertyRules for field-specific conditions (e.g., {website: 'remove .se', industry: 'remove if null'}). PRECEDENCE: Custom rules always override defaults. GUIDANCE: REMOVE only if default criteria met (no custom rules) OR custom rule matched. KEEP for legitimate records (even incomplete), any uncertainty. Be conservative—when doubtful, KEEP."
+      "description": "REMOVE if: (1) test names (test/demo/example/sample/dummy/asdf) OR test domains (test.com/example.com/localhost), (2) fake (empty name, numbers-only name, 'Fake Company'), (3) no name AND no domain, (4) custom rule match (if provided). KEEP otherwise. When uncertain, KEEP."
     },
     "reasoning": {
       "type": "string",
-      "description": "1 sentence explaining the key factor for the REMOVE/KEEP decision and confidence level."
+      "description": "1 sentence: key factor + confidence justification."
     },
     "confidence": {
       "type": "string",
       "enum": ["LOW", "MEDIUM", "HIGH"],
-      "description": "Confidence in recommendation. HIGH=clear rule match or obvious test data, MEDIUM=reasonable certainty with some ambiguity, LOW=uncertain/borderline case."
+      "description": "HIGH=clear match, MEDIUM=some ambiguity, LOW=uncertain."
     }
   },
   "required": ["recommendedAction", "reasoning", "confidence"],
@@ -132,54 +132,23 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Build system prompt
-    let systemPrompt = `You are a CRM data quality expert specializing in identifying and recommending removal of fake, test, example, or demo data that pollutes CRM systems.
+    // Build user message with custom rules if provided
+    let userMessage = JSON.stringify(company, null, 2)
 
-Your primary goal is to detect clearly unusable data for removal while preserving ALL legitimate company records, even those with incomplete data.
-
-CRITICAL: When analyzing company records, you must be CONSERVATIVE. Only recommend REMOVE for records that are CLEARLY test/fake/unusable data. When in doubt, ALWAYS recommend KEEP.
-
-Test/Fake Data Indicators (warrant REMOVE):
-1. Obvious test terminology: Names containing "test", "testing", "demo", "example", "sample", "asdf", "qwerty", "xxx", "dummy"
-2. Test domains: example.com, test.com, localhost, fake.com, demo.com, etc.
-3. Completely fake data: "Mickey Mouse Inc", "Fake Company", "Delete Me Corp", "XXXX", "123456"
-4. Critical missing data: No company name AND no domain/website
-5. Placeholder patterns: Names that are just numbers, special characters, or keyboard mashing
-
-Legitimate Data (should be KEEP):
-- Real company names, even if unfamiliar or unusual
-- Companies with missing or incomplete data (missing contacts, activities, address, etc.)
-- Small businesses or startups with minimal information
-- Companies with unusual but legitimate names
-- Records with at least one valid identifier (real name OR real domain)
-
-When in doubt between REMOVE and KEEP, choose KEEP. It's better to keep a questionable record than to accidentally delete a legitimate company.`
-
-    // Add custom purge rules if provided
     if (purgeRules && typeof purgeRules === "string" && purgeRules.trim()) {
-      systemPrompt += `\n\nCUSTOM PURGE RULES (ABSOLUTE PRIORITY - OVERRIDE DEFAULT LOGIC):
-${purgeRules}
-
-IMPORTANT: These custom purge rules take absolute precedence over all default criteria. If a custom rule applies, follow it exactly, even if it contradicts the default logic above.`
+      userMessage = `CUSTOM RULES (override defaults): ${purgeRules}\n\n${userMessage}`
     }
 
-    // Add custom property-specific purge rules if provided
     if (purgePropertyRules && typeof purgePropertyRules === "object") {
-      systemPrompt += `\n\nCUSTOM PROPERTY-SPECIFIC PURGE RULES (ABSOLUTE PRIORITY - OVERRIDE DEFAULT LOGIC):`
+      const propertyRules = Object.entries(purgePropertyRules)
+        .filter(([_, rule]) => typeof rule === "string" && rule.trim())
+        .map(([property, rule]) => `${property}: ${rule}`)
+        .join(", ")
 
-      for (const [property, rule] of Object.entries(purgePropertyRules)) {
-        if (typeof rule === "string" && rule.trim()) {
-          systemPrompt += `\n- Property '${property}': ${rule}`
-        }
+      if (propertyRules) {
+        userMessage = `PROPERTY RULES (override defaults): ${propertyRules}\n\n${userMessage}`
       }
-
-      systemPrompt += `\n\nIMPORTANT: These property-specific purge rules take absolute precedence over all default criteria. If any property-specific rule applies, follow it exactly, even if it contradicts the default logic above.`
     }
-
-    systemPrompt += `\n\nAnalyze the following company record and determine if it should be REMOVED (purged) or KEPT in the CRM system.`
-
-    // Prepare company data for analysis
-    const companyData = JSON.stringify(company, null, 2)
 
     // Call OpenAI with structured output
     const openai = getOpenAIClient()
@@ -188,12 +157,8 @@ IMPORTANT: These custom purge rules take absolute precedence over all default cr
       reasoning_effort: "low",
       messages: [
         {
-          role: "system",
-          content: systemPrompt,
-        },
-        {
           role: "user",
-          content: `Analyze this company record:\n\n${companyData}`,
+          content: userMessage,
         },
       ],
       response_format: {
