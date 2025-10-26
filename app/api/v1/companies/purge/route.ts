@@ -266,7 +266,8 @@ export async function POST(req: NextRequest) {
         reasoningTokens: tokenUsage.reasoningTokens,
         totalTokens: tokenUsage.totalTokens,
         costUSD: parseFloat(totalCost.toFixed(6))
-      }
+      },
+      jsonSchema: dynamicSchema
     })
   } catch (error) {
     console.error("Error in purge analysis:", error)
