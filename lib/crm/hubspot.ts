@@ -89,11 +89,17 @@ export class HubSpotClient implements CRMClient {
 
   /**
    * Get a company record from HubSpot
-   * GET /crm/v3/objects/companies/{companyId}
+   * GET /crm/v3/objects/companies/{companyId}?properties=...
    */
   async getCompany(recordId: string): Promise<GetCompanyResult> {
+    // Request all relevant properties including date fields
+    const properties = [
+      "name", "domain", "website", "phone", "city", "state", "zip",
+      "country", "address", "linkedin", "createdate", "hs_lastmodifieddate"
+    ].join(",")
+
     const response = await fetch(
-      `${this.baseUrl}/crm/v3/objects/companies/${recordId}`,
+      `${this.baseUrl}/crm/v3/objects/companies/${recordId}?properties=${properties}`,
       {
         method: "GET",
         headers: {

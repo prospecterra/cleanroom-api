@@ -4,15 +4,19 @@ import { checkFeatureAccess, trackFeatureUsage } from "@/lib/autumn"
 import { getOpenAIClient } from "@/lib/openai"
 import { detectCRMFromHeaders, createCRMClient } from "@/lib/crm"
 
-// Clean filter values to remove JSON syntax characters that AI sometimes includes
+// Clean filter values to remove JSON syntax and malformed patterns
 function cleanFilterValue(value: string | null): string | null {
   if (!value || typeof value !== 'string') return value
-  // Remove JSON syntax characters: {, }, [, ], ,, ", '
-  return value.replace(/[{}\[\],"']+$/g, '').trim()
+
+  return value
+    .replace(/[{}\[\],"']+$/g, '') // Remove trailing JSON syntax: { } [ ] , " '
+    .replace(/[:/?#&=].*$/g, '')    // Remove everything after URL-like chars: : / ? # & =
+    .replace(/^https?:\/\//g, '')   // Remove protocol prefix if present
+    .trim()
 }
 
-// Step 1: Duplicate search filter generation schema
-const DUPLICATE_SEARCH_SCHEMA = {
+// Step 1: Duplicate search filter generation schema (base)
+const BASE_DUPLICATE_SEARCH_SCHEMA = {
   "type": "object",
   "description": "Generate HubSpot search filters. Extract clean property values from input - NO JSON syntax chars in values. OR logic between filterGroups, AND within. Max 5 groups. Priority 1=domain; Priority 2=name+city/phone/fuzzy; Priority 3=address+city.",
   "properties": {
@@ -41,7 +45,7 @@ const DUPLICATE_SEARCH_SCHEMA = {
                 },
                 "value": {
                   "type": ["string", "null"],
-                  "description": "Clean value only. CORRECT: 'acme.com'. WRONG: 'acme.com}' or 'acme.com}]},{'. Stop at property value end. No { } [ ] , \" ' characters. Strip http/https. Null for HAS_PROPERTY/NOT_HAS_PROPERTY/IN/NOT_IN."
+                  "description": "Extract ONLY the core property value - no extra characters. CORRECT: 'acme.com', 'John Smith', '555-1234'. WRONG: 'acme.com}', 'acme.com:n/a?', 'acme.com:80', 'acme.com/path', 'http://acme.com'. For domains: strip protocol/port/path/query. NO trailing : / ? # & = chars. NO { } [ ] , \" '. Null for HAS_PROPERTY/NOT_HAS_PROPERTY/IN/NOT_IN."
                 },
                 "values": {
                   "type": ["array", "null"],
@@ -59,14 +63,23 @@ const DUPLICATE_SEARCH_SCHEMA = {
         "required": ["filters"],
         "additionalProperties": false
       }
+    },
+    "reasoning": {
+      "type": "string",
+      "description": "1 sentence: explain duplicate search strategy and key properties used."
+    },
+    "confidence": {
+      "type": "string",
+      "description": "HIGH=strong identifiers (domain/phone). MEDIUM=name+location. LOW=weak/generic data.",
+      "enum": ["LOW", "MEDIUM", "HIGH"]
     }
   },
-  "required": ["filterGroups"],
+  "required": ["filterGroups", "reasoning", "confidence"],
   "additionalProperties": false
 }
 
-// Step 2: Merge decision schema
-const MERGE_DECISION_SCHEMA = {
+// Step 2: Merge decision schema (base)
+const BASE_MERGE_DECISION_SCHEMA = {
   "type": "object",
   "description": "Decide KEEP vs MERGE for current record. Scoring: completeness 40%, quality 25%, engagement 20%, source 10%, history 5%. TIEBREAKER: oldest created date wins.",
   "properties": {
@@ -93,8 +106,8 @@ const MERGE_DECISION_SCHEMA = {
   "additionalProperties": false
 }
 
-// Step 3: Field-by-field merge schema
-const MERGE_FIELD_SCHEMA = {
+// Step 3: Field-by-field merge schema (base)
+const BASE_MERGE_FIELD_SCHEMA = {
   "type": "object",
   "description": "Field-level merge analysis. Only update primary with better/newer values from current.",
   "properties": {
@@ -117,6 +130,67 @@ const MERGE_FIELD_SCHEMA = {
   },
   "required": ["reasoning", "confidence"],
   "additionalProperties": false
+}
+
+// Schema builder for Step 1: Duplicate search
+interface DuplicateSearchInput {
+  duplicateRules?: string
+}
+
+function buildDuplicateSearchSchema(input: DuplicateSearchInput) {
+  const schema = JSON.parse(JSON.stringify(BASE_DUPLICATE_SEARCH_SCHEMA))
+
+  // Add duplicateRules to root description
+  if (input.duplicateRules && typeof input.duplicateRules === "string" && input.duplicateRules.trim()) {
+    schema.description = `${schema.description} User rules: ${input.duplicateRules}`
+  }
+
+  return schema
+}
+
+// Schema builder for Step 2: Merge decision
+interface MergeDecisionInput {
+  primaryRules?: string
+}
+
+function buildMergeDecisionSchema(input: MergeDecisionInput) {
+  const schema = JSON.parse(JSON.stringify(BASE_MERGE_DECISION_SCHEMA))
+
+  // Add primaryRules to root description
+  if (input.primaryRules && typeof input.primaryRules === "string" && input.primaryRules.trim()) {
+    schema.description = `${schema.description} User rules: ${input.primaryRules}`
+  }
+
+  return schema
+}
+
+// Schema builder for Step 3: Field merge
+interface MergeFieldInput {
+  mergeRules?: string
+  mergePropertyRules?: Record<string, string>
+}
+
+function buildMergeFieldSchema(input: MergeFieldInput) {
+  const schema = JSON.parse(JSON.stringify(BASE_MERGE_FIELD_SCHEMA))
+
+  // Add mergeRules to root description
+  if (input.mergeRules && typeof input.mergeRules === "string" && input.mergeRules.trim()) {
+    schema.description = `${schema.description} User rules: ${input.mergeRules}`
+  }
+
+  // Add mergePropertyRules to primaryRecordPropertiesToUpdate description
+  if (input.mergePropertyRules && typeof input.mergePropertyRules === "object") {
+    const propertyRules = Object.entries(input.mergePropertyRules)
+      .filter(([_, rule]) => typeof rule === "string" && rule.trim())
+      .map(([property, rule]) => `${property}: ${rule}`)
+      .join(", ")
+
+    if (propertyRules) {
+      schema.properties.primaryRecordPropertiesToUpdate.description = `${schema.properties.primaryRecordPropertiesToUpdate.description} User property rules: ${propertyRules}`
+    }
+  }
+
+  return schema
 }
 
 export async function POST(req: NextRequest) {
@@ -215,10 +289,7 @@ export async function POST(req: NextRequest) {
     const openai = getOpenAIClient()
 
     // Build schema with duplicate rules if provided
-    const step1Schema = JSON.parse(JSON.stringify(DUPLICATE_SEARCH_SCHEMA))
-    if (duplicateRules && typeof duplicateRules === "string" && duplicateRules.trim()) {
-      step1Schema.description = `${step1Schema.description} User duplicate rules: ${duplicateRules}`
-    }
+    const step1Schema = buildDuplicateSearchSchema({ duplicateRules })
 
     const step1Completion = await openai.chat.completions.create({
       model: "gpt-5-nano-2025-08-07",
@@ -301,7 +372,7 @@ export async function POST(req: NextRequest) {
         },
         body: JSON.stringify({
           filterGroups: cleanedFilterGroups,
-          properties: ["name", "domain", "website", "phone", "city", "state", "zip", "country", "address", "linkedin", "createdate"],
+          properties: ["name", "domain", "website", "phone", "city", "state", "zip", "country", "address", "linkedin", "createdate", "hs_lastmodifieddate"],
           limit: 100
         }),
       }
@@ -342,10 +413,21 @@ export async function POST(req: NextRequest) {
         duplicatesFound: false,
         duplicateCount: 0,
         duplicates: [],
-        searchFilters: duplicateSearch.filterGroups,
-        recommendedAction: "KEEP",
-        reasoning: "No duplicate records found in CRM search",
-        confidence: "HIGH",
+        step1DuplicateSearch: {
+          filterGroups: duplicateSearch.filterGroups,
+          reasoning: duplicateSearch.reasoning,
+          confidence: duplicateSearch.confidence
+        },
+        step2MergeDecision: {
+          recommendedAction: "KEEP",
+          reasoning: "No duplicate records found in CRM search",
+          confidence: "HIGH",
+          primaryRecordId: recordId
+        },
+        duplicateRules: duplicateRules || null,
+        primaryRules: primaryRules || null,
+        mergeRules: mergeRules || null,
+        mergePropertyRules: mergePropertyRules || null,
         creditCost: 1,
         creditsRemaining: updatedAccess.remaining || 0,
         recordMerged: false,
@@ -363,10 +445,7 @@ export async function POST(req: NextRequest) {
     }
 
     // STEP 3: Analyze merge decision
-    const step2Schema = JSON.parse(JSON.stringify(MERGE_DECISION_SCHEMA))
-    if (primaryRules && typeof primaryRules === "string" && primaryRules.trim()) {
-      step2Schema.description = `${step2Schema.description} User primary record selection rules: ${primaryRules}`
-    }
+    const step2Schema = buildMergeDecisionSchema({ primaryRules })
 
     const mergeAnalysisInput = {
       currentRecord: { id: recordId, ...company },
@@ -429,8 +508,21 @@ export async function POST(req: NextRequest) {
         duplicatesFound: true,
         duplicateCount: otherDuplicates.length,
         duplicates: otherDuplicates,
-        searchFilters: duplicateSearch.filterGroups,
-        ...mergeDecision,
+        step1DuplicateSearch: {
+          filterGroups: duplicateSearch.filterGroups,
+          reasoning: duplicateSearch.reasoning,
+          confidence: duplicateSearch.confidence
+        },
+        step2MergeDecision: {
+          recommendedAction: mergeDecision.recommendedAction,
+          primaryRecordId: mergeDecision.primaryRecordId,
+          reasoning: mergeDecision.reasoning,
+          confidence: mergeDecision.confidence
+        },
+        duplicateRules: duplicateRules || null,
+        primaryRules: primaryRules || null,
+        mergeRules: mergeRules || null,
+        mergePropertyRules: mergePropertyRules || null,
         creditCost: totalCredits,
         creditsRemaining: updatedAccess.remaining || 0,
         recordMerged: false,
@@ -461,20 +553,7 @@ export async function POST(req: NextRequest) {
     const primaryRecord = await crmClient.getCompany(mergeDecision.primaryRecordId)
 
     // Build schema with merge rules if provided
-    const step3Schema = JSON.parse(JSON.stringify(MERGE_FIELD_SCHEMA))
-    if (mergeRules && typeof mergeRules === "string" && mergeRules.trim()) {
-      step3Schema.description = `${step3Schema.description} User merge rules: ${mergeRules}`
-    }
-    if (mergePropertyRules && typeof mergePropertyRules === "object") {
-      const propertyRules = Object.entries(mergePropertyRules)
-        .filter(([_, rule]) => typeof rule === "string" && rule.trim())
-        .map(([property, rule]) => `${property}: ${rule}`)
-        .join(", ")
-
-      if (propertyRules) {
-        step3Schema.properties.primaryRecordPropertiesToUpdate.description = `${step3Schema.properties.primaryRecordPropertiesToUpdate.description} User property rules: ${propertyRules}`
-      }
-    }
+    const step3Schema = buildMergeFieldSchema({ mergeRules, mergePropertyRules })
 
     const fieldMergeInput = {
       currentRecord: { id: recordId, ...company },
@@ -604,10 +683,26 @@ export async function POST(req: NextRequest) {
       duplicatesFound: true,
       duplicateCount: otherDuplicates.length,
       duplicates: otherDuplicates,
-      searchFilters: duplicateSearch.filterGroups,
-      ...mergeDecision,
-      fieldMergeAnalysis: fieldMerge,
-      primaryRecordPropertiesToUpdate: fieldMerge.primaryRecordPropertiesToUpdate,
+      step1DuplicateSearch: {
+        filterGroups: duplicateSearch.filterGroups,
+        reasoning: duplicateSearch.reasoning,
+        confidence: duplicateSearch.confidence
+      },
+      step2MergeDecision: {
+        recommendedAction: mergeDecision.recommendedAction,
+        primaryRecordId: mergeDecision.primaryRecordId,
+        reasoning: mergeDecision.reasoning,
+        confidence: mergeDecision.confidence
+      },
+      step3FieldMerge: {
+        primaryRecordPropertiesToUpdate: fieldMerge.primaryRecordPropertiesToUpdate,
+        reasoning: fieldMerge.reasoning,
+        confidence: fieldMerge.confidence
+      },
+      duplicateRules: duplicateRules || null,
+      primaryRules: primaryRules || null,
+      mergeRules: mergeRules || null,
+      mergePropertyRules: mergePropertyRules || null,
       mergeRecord,
       recordUpdated,
       recordMerged,
