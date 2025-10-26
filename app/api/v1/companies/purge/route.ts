@@ -185,6 +185,7 @@ IMPORTANT: These custom purge rules take absolute precedence over all default cr
     const openai = getOpenAIClient()
     const completion = await openai.chat.completions.create({
       model: "gpt-5-nano-2025-08-07",
+      reasoning_effort: "low",
       messages: [
         {
           role: "system",

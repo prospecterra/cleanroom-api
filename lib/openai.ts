@@ -32,6 +32,7 @@ export async function callOpenAIWithStructuredOutput(
   try {
     const completion = await client.chat.completions.create({
       model: "gpt-5-nano-2025-08-07",
+      reasoning_effort: "low",
       messages: [
         {
           role: "user",
