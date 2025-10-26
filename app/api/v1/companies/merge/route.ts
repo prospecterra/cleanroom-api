@@ -115,7 +115,7 @@ const MERGE_FIELD_SCHEMA = {
       "description": "HIGH=clear path, MEDIUM=ambiguity, LOW=uncertain."
     }
   },
-  "required": ["primaryRecordPropertiesToUpdate", "reasoning", "confidence"],
+  "required": ["reasoning", "confidence"],
   "additionalProperties": false
 }
 
