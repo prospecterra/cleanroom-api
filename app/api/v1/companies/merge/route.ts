@@ -271,6 +271,26 @@ export async function POST(req: NextRequest) {
     }
 
     // STEP 2: Search for duplicates in CRM
+    // Clean filters: HubSpot requires value and values to be mutually exclusive
+    // Remove null values to avoid "mutually exclusive" error
+    const cleanedFilterGroups = duplicateSearch.filterGroups.map((group: any) => ({
+      filters: group.filters.map((filter: any) => {
+        const cleanedFilter: any = {
+          propertyName: filter.propertyName,
+          operator: filter.operator
+        }
+        // Only include value if it's not null
+        if (filter.value !== null) {
+          cleanedFilter.value = filter.value
+        }
+        // Only include values if it's not null
+        if (filter.values !== null) {
+          cleanedFilter.values = filter.values
+        }
+        return cleanedFilter
+      })
+    }))
+
     const searchResponse = await fetch(
       "https://api.hubapi.com/crm/v3/objects/companies/search",
       {
@@ -280,7 +300,7 @@ export async function POST(req: NextRequest) {
           "Authorization": `Bearer ${crmCredentials.apiKey}`,
         },
         body: JSON.stringify({
-          filterGroups: duplicateSearch.filterGroups,
+          filterGroups: cleanedFilterGroups,
           properties: ["name", "domain", "website", "phone", "city", "state", "zip", "country", "address", "linkedin", "createdate"],
           limit: 100
         }),
