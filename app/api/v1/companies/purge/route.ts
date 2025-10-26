@@ -16,7 +16,7 @@ const PurgeAnalysisSchema = {
     },
     "reasoning": {
       "type": "string",
-      "description": "3-sentence explanation: (1) which criteria/rules were evaluated, (2) why REMOVE or KEEP was chosen, (3) key factors in the decision."
+      "description": "1 sentence explaining the key factor for the REMOVE/KEEP decision and confidence level."
     },
     "confidence": {
       "type": "string",

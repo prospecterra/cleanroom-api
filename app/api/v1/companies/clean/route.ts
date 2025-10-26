@@ -35,7 +35,7 @@ const BASE_SCHEMA = {
         },
         "domain": {
           "type": ["string", "null"],
-          "description": "Primary URL but trimmed to just the domain. Format: company.com. Add protocol if missing."
+          "description": "Primary URL but trimmed to just the domain (no wwww. or https://). Format: company.com. Add protocol if missing."
         },
         "city": {
           "type": ["string", "null"],
@@ -83,7 +83,7 @@ const BASE_SCHEMA = {
     },
     "reasoning": {
       "type": "object",
-      "description": "3-sentence explanations per field: (1) original value/issue, (2) action taken, (3) final result and why correct.",
+      "description": "1 sentence per field explaining the key factor for the cleaned value and confidence level.",
       "properties": {
         "name": { "type": "string" },
         "legalName": { "type": "string" },
