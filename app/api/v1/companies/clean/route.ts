@@ -33,6 +33,10 @@ const BASE_SCHEMA = {
           "type": ["string", "null"],
           "description": "Primary URL. Format: https://www.company.com. Add protocol if missing."
         },
+        "domain": {
+          "type": ["string", "null"],
+          "description": "Primary URL but trimmed to just the domain. Format: company.com. Add protocol if missing."
+        },
         "city": {
           "type": ["string", "null"],
           "description": "HQ city. Proper case, full names, no abbreviations."
@@ -74,7 +78,7 @@ const BASE_SCHEMA = {
           "description": "Twitter/X account URL. Format: https://twitter.com/name or https://x.com/name"
         }
       },
-      "required": ["name", "legalName", "description", "industry", "website", "city", "state", "country", "postalCode", "phone", "street", "linkedIn", "facebook", "instagram", "twitter"],
+      "required": ["name", "legalName", "description", "industry", "website", "domain", "city", "state", "country", "postalCode", "phone", "street", "linkedIn", "facebook", "instagram", "twitter"],
       "additionalProperties": false
     },
     "reasoning": {
@@ -86,6 +90,7 @@ const BASE_SCHEMA = {
         "description": { "type": "string" },
         "industry": { "type": "string" },
         "website": { "type": "string" },
+        "domain": { "type": "string" },
         "city": { "type": "string" },
         "state": { "type": "string" },
         "country": { "type": "string" },
@@ -97,7 +102,7 @@ const BASE_SCHEMA = {
         "instagram": { "type": "string" },
         "twitter": { "type": "string" }
       },
-      "required": ["name", "legalName", "description", "industry", "website", "city", "state", "country", "postalCode", "phone", "street", "linkedIn", "facebook", "instagram", "twitter"],
+      "required": ["name", "legalName", "description", "industry", "website", "domain", "city", "state", "country", "postalCode", "phone", "street", "linkedIn", "facebook", "instagram", "twitter"],
       "additionalProperties": false
     },
     "confidence": {
@@ -109,6 +114,7 @@ const BASE_SCHEMA = {
         "description": { "type": "string", "enum": ["LOW", "MEDIUM", "HIGH"] },
         "industry": { "type": "string", "enum": ["LOW", "MEDIUM", "HIGH"] },
         "website": { "type": "string", "enum": ["LOW", "MEDIUM", "HIGH"] },
+        "domain": { "type": "string", "enum": ["LOW", "MEDIUM", "HIGH"] },
         "city": { "type": "string", "enum": ["LOW", "MEDIUM", "HIGH"] },
         "state": { "type": "string", "enum": ["LOW", "MEDIUM", "HIGH"] },
         "country": { "type": "string", "enum": ["LOW", "MEDIUM", "HIGH"] },
@@ -120,7 +126,7 @@ const BASE_SCHEMA = {
         "instagram": { "type": "string", "enum": ["LOW", "MEDIUM", "HIGH"] },
         "twitter": { "type": "string", "enum": ["LOW", "MEDIUM", "HIGH"] }
       },
-      "required": ["name", "legalName", "description", "industry", "website", "city", "state", "country", "postalCode", "phone", "street", "linkedIn", "facebook", "instagram", "twitter"],
+      "required": ["name", "legalName", "description", "industry", "website", "domain", "city", "state", "country", "postalCode", "phone", "street", "linkedIn", "facebook", "instagram", "twitter"],
       "additionalProperties": false
     }
   },
@@ -139,6 +145,45 @@ interface CompanyInput {
 function buildDynamicSchema(input: CompanyInput) {
   // Deep clone the base schema
   const schema = JSON.parse(JSON.stringify(BASE_SCHEMA))
+
+  // Get the list of properties that were actually provided in the input
+  const providedProperties = Object.keys(input.company)
+
+  // Filter cleanedCompany properties to only include provided ones
+  const filteredCleanedProperties: Record<string, any> = {}
+  for (const key of providedProperties) {
+    if (schema.properties.cleanedCompany.properties[key]) {
+      filteredCleanedProperties[key] = schema.properties.cleanedCompany.properties[key]
+    }
+  }
+  schema.properties.cleanedCompany.properties = filteredCleanedProperties
+  schema.properties.cleanedCompany.required = providedProperties.filter(
+    key => schema.properties.cleanedCompany.properties[key]
+  )
+
+  // Filter reasoning properties to only include provided ones
+  const filteredReasoningProperties: Record<string, any> = {}
+  for (const key of providedProperties) {
+    if (BASE_SCHEMA.properties.reasoning.properties[key]) {
+      filteredReasoningProperties[key] = BASE_SCHEMA.properties.reasoning.properties[key]
+    }
+  }
+  schema.properties.reasoning.properties = filteredReasoningProperties
+  schema.properties.reasoning.required = providedProperties.filter(
+    key => BASE_SCHEMA.properties.reasoning.properties[key]
+  )
+
+  // Filter confidence properties to only include provided ones
+  const filteredConfidenceProperties: Record<string, any> = {}
+  for (const key of providedProperties) {
+    if (BASE_SCHEMA.properties.confidence.properties[key]) {
+      filteredConfidenceProperties[key] = BASE_SCHEMA.properties.confidence.properties[key]
+    }
+  }
+  schema.properties.confidence.properties = filteredConfidenceProperties
+  schema.properties.confidence.required = providedProperties.filter(
+    key => BASE_SCHEMA.properties.confidence.properties[key]
+  )
 
   // Update top-level description with cleanRules if provided
   if (input.cleanRules) {
