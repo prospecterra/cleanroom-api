@@ -46,18 +46,12 @@ const DUPLICATE_SEARCH_SCHEMA = {
                   ]
                 },
                 "value": {
-                  "type": [
-                    "string",
-                    "null"
-                  ],
-                  "description": "The value to compare against for this filter condition. This should be extracted from the input company record for the corresponding propertyName. For example, if propertyName is 'domain' and the input company has domain 'acme.com', then value should be 'acme.com'. Use null or omit this field when using operators that don't require a single value (like HAS_PROPERTY, NOT_HAS_PROPERTY) or when using the values array for IN/NOT_IN operators. For website/domain properties, extract just the domain portion without protocol or paths. For fuzzy matching with CONTAINS_TOKEN, extract the core/significant part of the text (e.g., 'Microsoft' from 'Microsoft Corporation'). Do not include filters for properties where the input company record has null, empty, or missing values."
+                  "type": ["string", "null"],
+                  "description": "The value to compare against for this filter condition. This should be extracted from the input company record for the corresponding propertyName. For example, if propertyName is 'domain' and the input company has domain 'acme.com', then value should be 'acme.com'. Use null when using operators that don't require a single value (like HAS_PROPERTY, NOT_HAS_PROPERTY) or when using the values array for IN/NOT_IN operators. For website/domain properties, extract just the domain portion without protocol or paths. For fuzzy matching with CONTAINS_TOKEN, extract the core/significant part of the text (e.g., 'Microsoft' from 'Microsoft Corporation'). Do not include filters for properties where the input company record has null, empty, or missing values."
                 },
                 "values": {
-                  "type": [
-                    "array",
-                    "null"
-                  ],
-                  "description": "An array of values to compare against, used exclusively with IN and NOT_IN operators for matching against multiple possible values. For example, to find companies matching any of several domains, use IN operator with values array containing all domains. Use null or omit this field for single-value operators (EQ, CONTAINS_TOKEN, etc.) where the 'value' field should be used instead. This is useful for duplicate detection scenarios where a company might match multiple variations (e.g., different phone number formats, multiple domain variations, or various name spellings). Each item in the array should be a string value to match against.",
+                  "type": ["array", "null"],
+                  "description": "An array of values to compare against, used exclusively with IN and NOT_IN operators for matching against multiple possible values. For example, to find companies matching any of several domains, use IN operator with values array containing all domains. Use null for single-value operators (EQ, CONTAINS_TOKEN, etc.) where the 'value' field should be used instead. This is useful for duplicate detection scenarios where a company might match multiple variations (e.g., different phone number formats, multiple domain variations, or various name spellings). Each item in the array should be a string value to match against.",
                   "items": {
                     "type": "string"
                   }
@@ -65,7 +59,9 @@ const DUPLICATE_SEARCH_SCHEMA = {
               },
               "required": [
                 "propertyName",
-                "operator"
+                "operator",
+                "value",
+                "values"
               ],
               "additionalProperties": false
             }
