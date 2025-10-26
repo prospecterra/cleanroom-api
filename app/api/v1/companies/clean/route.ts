@@ -187,7 +187,7 @@ function buildDynamicSchema(input: CompanyInput) {
 
   // Update top-level description with cleanRules if provided
   if (input.cleanRules) {
-    schema.description = `${schema.description}\n\nIMPORTANT: Always prioritize the user-provided instructions below over the general description above.\n\nUser instructions: ${input.cleanRules}`
+    schema.description = `${schema.description} User rules: ${input.cleanRules}`
   }
 
   // Add user-specific property rules if provided
@@ -196,7 +196,7 @@ function buildDynamicSchema(input: CompanyInput) {
       // Only add rules for properties that exist in the cleanedCompany properties
       if (schema.properties.cleanedCompany?.properties[key]) {
         const currentDescription = schema.properties.cleanedCompany.properties[key].description
-        schema.properties.cleanedCompany.properties[key].description = `${currentDescription}\n\nIMPORTANT: Always prioritize the user-provided instructions below over the general description above.\n\nUser instructions: ${userRule}`
+        schema.properties.cleanedCompany.properties[key].description = `${currentDescription} User rules: ${userRule}`
       }
     }
   }

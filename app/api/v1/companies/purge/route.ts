@@ -4,8 +4,8 @@ import { checkFeatureAccess, trackFeatureUsage } from "@/lib/autumn"
 import { getOpenAIClient } from "@/lib/openai"
 import { detectCRMFromHeaders, createCRMClient } from "@/lib/crm"
 
-// JSON schema for purge analysis
-const PurgeAnalysisSchema = {
+// Base JSON schema for purge analysis
+const BASE_PURGE_SCHEMA = {
   "type": "object",
   "description": "Evaluate company for CRM purge. BE CONSERVATIVE: only REMOVE obvious test/fake data. KEEP legitimate records even if incomplete.",
   "properties": {
@@ -26,6 +26,34 @@ const PurgeAnalysisSchema = {
   },
   "required": ["recommendedAction", "reasoning", "confidence"],
   "additionalProperties": false
+}
+
+interface PurgeInput {
+  purgeRules?: string
+  purgePropertyRules?: Record<string, string>
+}
+
+function buildPurgeSchema(input: PurgeInput) {
+  const schema = JSON.parse(JSON.stringify(BASE_PURGE_SCHEMA))
+
+  // Add purgeRules to root description
+  if (input.purgeRules && typeof input.purgeRules === "string" && input.purgeRules.trim()) {
+    schema.description = `${schema.description} User rules: ${input.purgeRules}`
+  }
+
+  // Add purgePropertyRules to recommendedAction description
+  if (input.purgePropertyRules && typeof input.purgePropertyRules === "object") {
+    const propertyRules = Object.entries(input.purgePropertyRules)
+      .filter(([_, rule]) => typeof rule === "string" && rule.trim())
+      .map(([property, rule]) => `${property}: ${rule}`)
+      .join(", ")
+
+    if (propertyRules) {
+      schema.properties.recommendedAction.description = `${schema.properties.recommendedAction.description} User property rules: ${propertyRules}`
+    }
+  }
+
+  return schema
 }
 
 export async function POST(req: NextRequest) {
@@ -132,23 +160,8 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Build user message with custom rules if provided
-    let userMessage = JSON.stringify(company, null, 2)
-
-    if (purgeRules && typeof purgeRules === "string" && purgeRules.trim()) {
-      userMessage = `CUSTOM RULES (override defaults): ${purgeRules}\n\n${userMessage}`
-    }
-
-    if (purgePropertyRules && typeof purgePropertyRules === "object") {
-      const propertyRules = Object.entries(purgePropertyRules)
-        .filter(([_, rule]) => typeof rule === "string" && rule.trim())
-        .map(([property, rule]) => `${property}: ${rule}`)
-        .join(", ")
-
-      if (propertyRules) {
-        userMessage = `PROPERTY RULES (override defaults): ${propertyRules}\n\n${userMessage}`
-      }
-    }
+    // Build dynamic schema with user rules
+    const dynamicSchema = buildPurgeSchema({ purgeRules, purgePropertyRules })
 
     // Call OpenAI with structured output
     const openai = getOpenAIClient()
@@ -158,14 +171,14 @@ export async function POST(req: NextRequest) {
       messages: [
         {
           role: "user",
-          content: userMessage,
+          content: JSON.stringify(company, null, 2),
         },
       ],
       response_format: {
         type: "json_schema",
         json_schema: {
           name: "purge_analysis",
-          schema: PurgeAnalysisSchema,
+          schema: dynamicSchema,
           strict: true
         }
       },
