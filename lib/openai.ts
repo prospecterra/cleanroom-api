@@ -13,10 +13,20 @@ export function getOpenAIClient(): OpenAI {
   return openaiClient
 }
 
+interface OpenAIResponse {
+  data: Record<string, unknown>
+  usage: {
+    inputTokens: number
+    outputTokens: number
+    reasoningTokens: number
+    totalTokens: number
+  }
+}
+
 export async function callOpenAIWithStructuredOutput(
   companyData: Record<string, unknown>,
   jsonSchema: Record<string, unknown>
-): Promise<Record<string, unknown>> {
+): Promise<OpenAIResponse> {
   const client = getOpenAIClient()
 
   try {
@@ -44,7 +54,17 @@ export async function callOpenAIWithStructuredOutput(
       throw new Error("No response from OpenAI")
     }
 
-    return JSON.parse(responseContent) as Record<string, unknown>
+    const data = JSON.parse(responseContent) as Record<string, unknown>
+
+    // Extract token usage information
+    const usage = {
+      inputTokens: completion.usage?.prompt_tokens || 0,
+      outputTokens: completion.usage?.completion_tokens || 0,
+      reasoningTokens: completion.usage?.completion_tokens_details?.reasoning_tokens || 0,
+      totalTokens: completion.usage?.total_tokens || 0
+    }
+
+    return { data, usage }
   } catch (error) {
     console.error("OpenAI API error:", error)
     const message = error instanceof Error ? error.message : "Unknown error"

@@ -360,8 +360,11 @@ export async function POST(req: NextRequest) {
 
     // Call OpenAI with structured output
     let cleanedData
+    let tokenUsage
     try {
-      cleanedData = await callOpenAIWithStructuredOutput(body.company, dynamicSchema)
+      const result = await callOpenAIWithStructuredOutput(body.company, dynamicSchema)
+      cleanedData = result.data
+      tokenUsage = result.usage
     } catch (openaiError) {
       console.error("OpenAI error:", openaiError)
       const details = openaiError instanceof Error ? openaiError.message : "Unknown error"
@@ -451,6 +454,12 @@ export async function POST(req: NextRequest) {
       .update({ last_used: new Date().toISOString() })
       .eq('id', keyRecord.id)
 
+    // Calculate OpenAI costs for gpt-5-nano-2025-08-07
+    // Pricing: $0.30 per 1M input tokens, $1.20 per 1M output tokens
+    const inputCost = (tokenUsage.inputTokens / 1_000_000) * 0.30
+    const outputCost = (tokenUsage.outputTokens / 1_000_000) * 1.20
+    const totalCost = inputCost + outputCost
+
     return NextResponse.json({
       company: body.company,
       ...cleanedData,
@@ -459,7 +468,15 @@ export async function POST(req: NextRequest) {
       recordId: recordId || null,
       creditCost: 1,
       creditsRemaining: featureAccess.remaining ? featureAccess.remaining - 1 : 0,
-      recordUpdated
+      recordUpdated,
+      aiUsage: {
+        model: "gpt-5-nano-2025-08-07",
+        inputTokens: tokenUsage.inputTokens,
+        outputTokens: tokenUsage.outputTokens,
+        reasoningTokens: tokenUsage.reasoningTokens,
+        totalTokens: tokenUsage.totalTokens,
+        costUSD: parseFloat(totalCost.toFixed(6))
+      }
     })
 
   } catch (error) {

@@ -202,7 +202,8 @@ IMPORTANT: These custom purge rules take absolute precedence over all default cr
           schema: PurgeAnalysisSchema,
           strict: true
         }
-      }
+      },
+      max_completion_tokens: 16000
     })
 
     const responseContent = completion.choices[0]?.message?.content
@@ -215,6 +216,14 @@ IMPORTANT: These custom purge rules take absolute precedence over all default cr
 
     const analysis = JSON.parse(responseContent) as {
       recommendedAction: "REMOVE" | "KEEP"
+    }
+
+    // Extract token usage information
+    const tokenUsage = {
+      inputTokens: completion.usage?.prompt_tokens || 0,
+      outputTokens: completion.usage?.completion_tokens || 0,
+      reasoningTokens: completion.usage?.completion_tokens_details?.reasoning_tokens || 0,
+      totalTokens: completion.usage?.total_tokens || 0
     }
 
     // CRM Integration - Delete record if requested and recommended
@@ -256,6 +265,12 @@ IMPORTANT: These custom purge rules take absolute precedence over all default cr
     // Get updated credit balance
     const updatedAccess = await checkFeatureAccess(userId, "api_credits")
 
+    // Calculate OpenAI costs for gpt-5-nano-2025-08-07
+    // Pricing: $0.30 per 1M input tokens, $1.20 per 1M output tokens
+    const inputCost = (tokenUsage.inputTokens / 1_000_000) * 0.30
+    const outputCost = (tokenUsage.outputTokens / 1_000_000) * 1.20
+    const totalCost = inputCost + outputCost
+
     return NextResponse.json({
       company,
       ...analysis,
@@ -264,7 +279,15 @@ IMPORTANT: These custom purge rules take absolute precedence over all default cr
       recordId: recordId || null,
       creditCost: 1,
       creditsRemaining: updatedAccess.remaining || 0,
-      recordDeleted
+      recordDeleted,
+      aiUsage: {
+        model: "gpt-5-nano-2025-08-07",
+        inputTokens: tokenUsage.inputTokens,
+        outputTokens: tokenUsage.outputTokens,
+        reasoningTokens: tokenUsage.reasoningTokens,
+        totalTokens: tokenUsage.totalTokens,
+        costUSD: parseFloat(totalCost.toFixed(6))
+      }
     })
   } catch (error) {
     console.error("Error in purge analysis:", error)
