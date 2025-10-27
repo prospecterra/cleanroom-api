@@ -3,6 +3,15 @@ import { createServiceClient } from "@/lib/supabase/service"
 import { checkFeatureAccess, trackFeatureUsage } from "@/lib/autumn"
 import { getOpenAIClient } from "@/lib/openai"
 import { detectCRMFromHeaders, createCRMClient } from "@/lib/crm"
+import { checkRateLimit } from "@/lib/ratelimit"
+import {
+  validateCompanyObject,
+  validateRecordId,
+  sanitizeRule,
+  sanitizePropertyRules,
+  validateContentType,
+  sanitizeErrorMessage
+} from "@/lib/validation"
 
 // Clean filter values to remove JSON syntax and malformed patterns
 function cleanFilterValue(value: string | null): string | null {
@@ -195,6 +204,15 @@ function buildMergeFieldSchema(input: MergeFieldInput) {
 
 export async function POST(req: NextRequest) {
   try {
+    // Validate Content-Type
+    const contentTypeValidation = validateContentType(req.headers.get('content-type'))
+    if (!contentTypeValidation.valid) {
+      return NextResponse.json(
+        { error: contentTypeValidation.error },
+        { status: 400 }
+      )
+    }
+
     // Get API key from header
     const apiKey = req.headers.get("x-api-key")
 
@@ -223,6 +241,29 @@ export async function POST(req: NextRequest) {
 
     const userId = apiKeyData.user_id
 
+    // Check rate limits BEFORE doing anything else
+    const rateLimitResult = await checkRateLimit(userId, "merge-endpoint")
+
+    if (!rateLimitResult.allowed) {
+      const resetDate = new Date(rateLimitResult.reset!)
+      return NextResponse.json(
+        {
+          error: `Rate limit exceeded (${rateLimitResult.limitType})`,
+          limit: rateLimitResult.limit,
+          remaining: rateLimitResult.remaining,
+          reset: resetDate.toISOString()
+        },
+        {
+          status: 429,
+          headers: {
+            'X-RateLimit-Limit': rateLimitResult.limit!.toString(),
+            'X-RateLimit-Remaining': rateLimitResult.remaining!.toString(),
+            'X-RateLimit-Reset': resetDate.toISOString()
+          }
+        }
+      )
+    }
+
     // Check feature access and credit balance
     const access = await checkFeatureAccess(userId, "api_credits")
 
@@ -245,7 +286,7 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    const {
+    let {
       company,
       recordId,
       duplicateRules,
@@ -262,12 +303,29 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    if (!recordId || typeof recordId !== "string" || !recordId.trim()) {
+    // Validate company object size and content
+    const companyValidation = validateCompanyObject(company)
+    if (!companyValidation.valid) {
       return NextResponse.json(
-        { error: "recordId is required" },
+        { error: companyValidation.error },
         { status: 400 }
       )
     }
+
+    // Validate recordId
+    const recordIdValidation = validateRecordId(recordId)
+    if (!recordIdValidation.valid) {
+      return NextResponse.json(
+        { error: `Invalid recordId: ${recordIdValidation.error}` },
+        { status: 400 }
+      )
+    }
+
+    // Sanitize user rules
+    duplicateRules = sanitizeRule(duplicateRules)
+    primaryRules = sanitizeRule(primaryRules)
+    mergeRules = sanitizeRule(mergeRules)
+    mergePropertyRules = sanitizePropertyRules(mergePropertyRules)
 
     // Detect CRM credentials
     const crmCredentials = detectCRMFromHeaders(req.headers)
@@ -362,26 +420,37 @@ export async function POST(req: NextRequest) {
       })
     }))
 
-    const searchResponse = await fetch(
-      "https://api.hubapi.com/crm/v3/objects/companies/search",
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${crmCredentials.apiKey}`,
-        },
-        body: JSON.stringify({
-          filterGroups: cleanedFilterGroups,
-          properties: ["name", "domain", "website", "phone", "city", "state", "zip", "country", "address", "linkedin", "createdate", "hs_lastmodifieddate"],
-          limit: 100
-        }),
-      }
-    )
+    // Add timeout to HubSpot search call
+    const searchController = new AbortController()
+    const searchTimeout = setTimeout(() => searchController.abort(), 15000) // 15 second timeout
+
+    let searchResponse
+    try {
+      searchResponse = await fetch(
+        "https://api.hubapi.com/crm/v3/objects/companies/search",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${crmCredentials.apiKey}`,
+          },
+          body: JSON.stringify({
+            filterGroups: cleanedFilterGroups,
+            properties: ["name", "domain", "website", "phone", "city", "state", "zip", "country", "address", "linkedin", "createdate", "hs_lastmodifieddate"],
+            limit: 100
+          }),
+          signal: searchController.signal
+        }
+      )
+    } finally {
+      clearTimeout(searchTimeout)
+    }
 
     if (!searchResponse.ok) {
       const error = await searchResponse.text()
+      const errorMsg = sanitizeErrorMessage(error, 'merge-crm-search')
       return NextResponse.json(
-        { error: `CRM search failed: ${error}` },
+        { error: errorMsg },
         { status: 500 }
       )
     }
@@ -615,11 +684,9 @@ export async function POST(req: NextRequest) {
           })
           recordUpdated = true
         } catch (updateError) {
-          console.error("CRM update error:", updateError)
-          const errorMessage = updateError instanceof Error ? updateError.message : "Unknown CRM error"
-
+          const errorMsg = sanitizeErrorMessage(updateError, 'merge-crm-update')
           return NextResponse.json(
-            { error: `Failed to update primary record in CRM: ${errorMessage}` },
+            { error: errorMsg },
             { status: 500 }
           )
         }
@@ -627,36 +694,45 @@ export async function POST(req: NextRequest) {
 
       // STEP 6: Merge the current record into the primary record
       try {
-        const mergeResponse = await fetch(
-          "https://api.hubapi.com/crm/v3/objects/companies/merge",
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "Authorization": `Bearer ${crmCredentials.apiKey}`,
-            },
-            body: JSON.stringify({
-              primaryObjectId: mergeDecision.primaryRecordId,
-              objectIdToMerge: recordId
-            }),
-          }
-        )
+        // Add timeout to merge call
+        const mergeController = new AbortController()
+        const mergeTimeout = setTimeout(() => mergeController.abort(), 15000) // 15 second timeout
+
+        let mergeResponse
+        try {
+          mergeResponse = await fetch(
+            "https://api.hubapi.com/crm/v3/objects/companies/merge",
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${crmCredentials.apiKey}`,
+              },
+              body: JSON.stringify({
+                primaryObjectId: mergeDecision.primaryRecordId,
+                objectIdToMerge: recordId
+              }),
+              signal: mergeController.signal
+            }
+          )
+        } finally {
+          clearTimeout(mergeTimeout)
+        }
 
         if (!mergeResponse.ok) {
           const error = await mergeResponse.text()
+          const errorMsg = sanitizeErrorMessage(error, 'merge-crm-merge-response')
           return NextResponse.json(
-            { error: `CRM merge failed: ${error}` },
+            { error: errorMsg },
             { status: 500 }
           )
         }
 
         recordMerged = true
       } catch (mergeError) {
-        console.error("CRM merge error:", mergeError)
-        const errorMessage = mergeError instanceof Error ? mergeError.message : "Unknown CRM error"
-
+        const errorMsg = sanitizeErrorMessage(mergeError, 'merge-crm-merge')
         return NextResponse.json(
-          { error: `Failed to merge records in CRM: ${errorMessage}` },
+          { error: errorMsg },
           { status: 500 }
         )
       }

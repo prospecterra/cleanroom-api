@@ -1,5 +1,21 @@
 import { CRMClient, UpdateCompanyParams, DeleteCompanyParams, GetCompanyResult } from "./types"
 
+// Timeout for CRM API calls (15 seconds)
+const CRM_TIMEOUT_MS = 15000
+
+/**
+ * Helper to create fetch with timeout
+ */
+function fetchWithTimeout(url: string, options: RequestInit, timeoutMs: number = CRM_TIMEOUT_MS): Promise<Response> {
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), timeoutMs)
+
+  return fetch(url, {
+    ...options,
+    signal: controller.signal
+  }).finally(() => clearTimeout(timeout))
+}
+
 /**
  * HubSpot CRM client
  * Docs: https://developers.hubspot.com/docs/api/crm/companies
@@ -19,7 +35,7 @@ export class HubSpotClient implements CRMClient {
   async updateCompany(params: UpdateCompanyParams): Promise<void> {
     const { recordId, properties } = params
 
-    const response = await fetch(
+    const response = await fetchWithTimeout(
       `${this.baseUrl}/crm/v3/objects/companies/${recordId}`,
       {
         method: "PATCH",
@@ -28,7 +44,8 @@ export class HubSpotClient implements CRMClient {
           "Authorization": `Bearer ${this.apiKey}`,
         },
         body: JSON.stringify({ properties }),
-      }
+      },
+      CRM_TIMEOUT_MS
     )
 
     if (!response.ok) {
@@ -46,14 +63,15 @@ export class HubSpotClient implements CRMClient {
   async deleteCompany(params: DeleteCompanyParams): Promise<void> {
     const { recordId } = params
 
-    const response = await fetch(
+    const response = await fetchWithTimeout(
       `${this.baseUrl}/crm/v3/objects/companies/${recordId}`,
       {
         method: "DELETE",
         headers: {
           "Authorization": `Bearer ${this.apiKey}`,
         },
-      }
+      },
+      CRM_TIMEOUT_MS
     )
 
     if (!response.ok) {
@@ -70,14 +88,15 @@ export class HubSpotClient implements CRMClient {
    */
   async companyExists(recordId: string): Promise<boolean> {
     try {
-      const response = await fetch(
+      const response = await fetchWithTimeout(
         `${this.baseUrl}/crm/v3/objects/companies/${recordId}`,
         {
           method: "GET",
           headers: {
             "Authorization": `Bearer ${this.apiKey}`,
           },
-        }
+        },
+        CRM_TIMEOUT_MS
       )
 
       return response.ok
@@ -98,14 +117,15 @@ export class HubSpotClient implements CRMClient {
       "country", "address", "linkedin", "createdate", "hs_lastmodifieddate"
     ].join(",")
 
-    const response = await fetch(
+    const response = await fetchWithTimeout(
       `${this.baseUrl}/crm/v3/objects/companies/${recordId}?properties=${properties}`,
       {
         method: "GET",
         headers: {
           "Authorization": `Bearer ${this.apiKey}`,
         },
-      }
+      },
+      CRM_TIMEOUT_MS
     )
 
     if (!response.ok) {

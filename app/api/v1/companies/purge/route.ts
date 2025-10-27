@@ -3,6 +3,15 @@ import { createServiceClient } from "@/lib/supabase/service"
 import { checkFeatureAccess, trackFeatureUsage } from "@/lib/autumn"
 import { getOpenAIClient } from "@/lib/openai"
 import { detectCRMFromHeaders, createCRMClient } from "@/lib/crm"
+import { checkRateLimit } from "@/lib/ratelimit"
+import {
+  validateCompanyObject,
+  validateRecordId,
+  sanitizeRule,
+  sanitizePropertyRules,
+  validateContentType,
+  sanitizeErrorMessage
+} from "@/lib/validation"
 
 // Base JSON schema for purge analysis
 const BASE_PURGE_SCHEMA = {
@@ -58,6 +67,15 @@ function buildPurgeSchema(input: PurgeInput) {
 
 export async function POST(req: NextRequest) {
   try {
+    // Validate Content-Type
+    const contentTypeValidation = validateContentType(req.headers.get('content-type'))
+    if (!contentTypeValidation.valid) {
+      return NextResponse.json(
+        { error: contentTypeValidation.error },
+        { status: 400 }
+      )
+    }
+
     // Get API key from header
     const apiKey = req.headers.get("x-api-key")
 
@@ -86,6 +104,29 @@ export async function POST(req: NextRequest) {
 
     const userId = apiKeyData.user_id
 
+    // Check rate limits BEFORE doing anything else
+    const rateLimitResult = await checkRateLimit(userId, "purge-endpoint")
+
+    if (!rateLimitResult.allowed) {
+      const resetDate = new Date(rateLimitResult.reset!)
+      return NextResponse.json(
+        {
+          error: `Rate limit exceeded (${rateLimitResult.limitType})`,
+          limit: rateLimitResult.limit,
+          remaining: rateLimitResult.remaining,
+          reset: resetDate.toISOString()
+        },
+        {
+          status: 429,
+          headers: {
+            'X-RateLimit-Limit': rateLimitResult.limit!.toString(),
+            'X-RateLimit-Remaining': rateLimitResult.remaining!.toString(),
+            'X-RateLimit-Reset': resetDate.toISOString()
+          }
+        }
+      )
+    }
+
     // Check feature access and credit balance
     const access = await checkFeatureAccess(userId, "api_credits")
 
@@ -108,7 +149,7 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    const {
+    let {
       company,
       purgeRules,
       purgePropertyRules,
@@ -123,11 +164,25 @@ export async function POST(req: NextRequest) {
       )
     }
 
+    // Validate company object size and content
+    const companyValidation = validateCompanyObject(company)
+    if (!companyValidation.valid) {
+      return NextResponse.json(
+        { error: companyValidation.error },
+        { status: 400 }
+      )
+    }
+
+    // Sanitize user rules
+    purgeRules = sanitizeRule(purgeRules)
+    purgePropertyRules = sanitizePropertyRules(purgePropertyRules)
+
     // Validate CRM integration requirements BEFORE calling AI
     if (deleteRecord) {
-      if (!recordId || typeof recordId !== "string" || !recordId.trim()) {
+      const recordIdValidation = validateRecordId(recordId)
+      if (!recordIdValidation.valid) {
         return NextResponse.json(
-          { error: "recordId is required when deleteRecord is true" },
+          { error: `Invalid recordId: ${recordIdValidation.error}` },
           { status: 400 }
         )
       }
@@ -152,9 +207,9 @@ export async function POST(req: NextRequest) {
           )
         }
       } catch (verifyError) {
-        console.error("Error verifying company record:", verifyError)
+        const errorMsg = sanitizeErrorMessage(verifyError, 'purge-verify-record')
         return NextResponse.json(
-          { error: "Failed to verify company record in CRM" },
+          { error: errorMsg },
           { status: 500 }
         )
       }
@@ -221,11 +276,9 @@ export async function POST(req: NextRequest) {
 
           recordDeleted = true
         } catch (crmError) {
-          console.error("CRM deletion error:", crmError)
-          const errorMessage = crmError instanceof Error ? crmError.message : "Unknown CRM error"
-
+          const errorMsg = sanitizeErrorMessage(crmError, 'purge-crm-delete')
           return NextResponse.json(
-            { error: `Failed to delete record from CRM: ${errorMessage}` },
+            { error: errorMsg },
             { status: 500 }
           )
         }

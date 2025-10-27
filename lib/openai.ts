@@ -2,13 +2,20 @@ import OpenAI from "openai"
 
 let openaiClient: OpenAI | null = null
 
+// Timeout for OpenAI API calls (30 seconds)
+const OPENAI_TIMEOUT_MS = 30000
+
 export function getOpenAIClient(): OpenAI {
   if (!openaiClient) {
     const apiKey = process.env.OPENAI_API_KEY
     if (!apiKey) {
       throw new Error("OPENAI_API_KEY is not configured in environment variables")
     }
-    openaiClient = new OpenAI({ apiKey })
+    openaiClient = new OpenAI({
+      apiKey,
+      timeout: OPENAI_TIMEOUT_MS,
+      maxRetries: 2
+    })
   }
   return openaiClient
 }

@@ -4,12 +4,17 @@ import { cookies } from 'next/headers'
 export async function createClient() {
   const cookieStore = await cookies()
 
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
-  // Provide default values if not configured
-  const supabaseUrl = url && url.startsWith('http') ? url : 'https://placeholder.supabase.co'
-  const supabaseKey = key || 'placeholder-key'
+  // Validate credentials are configured
+  if (!supabaseUrl || !supabaseKey) {
+    throw new Error('Supabase credentials not configured. Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY.')
+  }
+
+  if (!supabaseUrl.startsWith('http')) {
+    throw new Error('Invalid NEXT_PUBLIC_SUPABASE_URL. Must start with http:// or https://')
+  }
 
   return createServerClient(
     supabaseUrl,

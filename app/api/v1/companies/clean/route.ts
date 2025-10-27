@@ -4,6 +4,14 @@ import { checkRateLimit } from "@/lib/ratelimit"
 import { callOpenAIWithStructuredOutput } from "@/lib/openai"
 import { checkFeatureAccess, trackFeatureUsage } from "@/lib/autumn"
 import { detectCRMFromHeaders, createCRMClient } from "@/lib/crm"
+import {
+  validateCompanyObject,
+  validateRecordId,
+  sanitizeRule,
+  sanitizePropertyRules,
+  validateContentType,
+  sanitizeErrorMessage
+} from "@/lib/validation"
 
 // Base JSON schema template for company data cleaning
 const BASE_SCHEMA = {
@@ -211,6 +219,15 @@ export async function POST(req: NextRequest) {
   let userId: string | undefined
 
   try {
+    // Validate Content-Type
+    const contentTypeValidation = validateContentType(req.headers.get('content-type'))
+    if (!contentTypeValidation.valid) {
+      return NextResponse.json(
+        { error: contentTypeValidation.error },
+        { status: 400 }
+      )
+    }
+
     // Get API key from header
     const apiKey = req.headers.get("x-api-key")
 
@@ -240,14 +257,18 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // Check that at least one company property is provided
-    const companyKeys = Object.keys(body.company)
-    if (companyKeys.length === 0) {
+    // Validate company object size and content
+    const companyValidation = validateCompanyObject(body.company)
+    if (!companyValidation.valid) {
       return NextResponse.json(
-        { error: "Company object must contain at least one property" },
+        { error: companyValidation.error },
         { status: 400 }
       )
     }
+
+    // Sanitize user rules
+    body.cleanRules = sanitizeRule(body.cleanRules)
+    body.cleanPropertyRules = sanitizePropertyRules(body.cleanPropertyRules)
 
     // Set defaults for optional fields
     const updateRecord = body.updateRecord ?? false
@@ -255,9 +276,10 @@ export async function POST(req: NextRequest) {
 
     // Validate CRM integration requirements BEFORE calling AI
     if (updateRecord) {
-      if (!recordId || typeof recordId !== "string" || !recordId.trim()) {
+      const recordIdValidation = validateRecordId(recordId)
+      if (!recordIdValidation.valid) {
         return NextResponse.json(
-          { error: "recordId is required when updateRecord is true" },
+          { error: `Invalid recordId: ${recordIdValidation.error}` },
           { status: 400 }
         )
       }
@@ -282,9 +304,9 @@ export async function POST(req: NextRequest) {
           )
         }
       } catch (verifyError) {
-        console.error("Error verifying company record:", verifyError)
+        const errorMsg = sanitizeErrorMessage(verifyError, 'clean-verify-record')
         return NextResponse.json(
-          { error: "Failed to verify company record in CRM" },
+          { error: errorMsg },
           { status: 500 }
         )
       }
@@ -366,11 +388,9 @@ export async function POST(req: NextRequest) {
       cleanedData = result.data
       tokenUsage = result.usage
     } catch (openaiError) {
-      console.error("OpenAI error:", openaiError)
-      const details = openaiError instanceof Error ? openaiError.message : "Unknown error"
-
+      const errorMsg = sanitizeErrorMessage(openaiError, 'clean-openai')
       return NextResponse.json(
-        { error: "Failed to process company data", details },
+        { error: errorMsg },
         { status: 500 }
       )
     }
@@ -426,11 +446,9 @@ export async function POST(req: NextRequest) {
             recordUpdated = true
           }
         } catch (crmError) {
-          console.error("CRM update error:", crmError)
-          const errorMessage = crmError instanceof Error ? crmError.message : "Unknown CRM error"
-
+          const errorMsg = sanitizeErrorMessage(crmError, 'clean-crm-update')
           return NextResponse.json(
-            { error: `Failed to update record in CRM: ${errorMessage}` },
+            { error: errorMsg },
             { status: 500 }
           )
         }
