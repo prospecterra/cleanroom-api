@@ -6,6 +6,11 @@ import Link from "next/link"
 import { createClient } from "@/lib/supabase/client"
 import { isSupabaseConfigured } from "@/lib/supabase/config"
 
+// Whitelist of emails allowed to sign up
+const ALLOWED_EMAILS = [
+  "elias@prospecterra.com"
+]
+
 export default function SignUpPage() {
   const router = useRouter()
   const [name, setName] = useState("")
@@ -21,6 +26,14 @@ export default function SignUpPage() {
     setLoading(true)
 
     try {
+      // Check if email is whitelisted
+      const normalizedEmail = email.toLowerCase().trim()
+      if (!ALLOWED_EMAILS.includes(normalizedEmail)) {
+        setError("Sign ups are currently restricted. Please contact us for access.")
+        setLoading(false)
+        return
+      }
+
       const supabase = createClient()
 
       // Sign up with Supabase Auth
