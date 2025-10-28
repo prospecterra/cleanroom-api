@@ -11,7 +11,7 @@ export interface CRMCredentials {
 
 export interface UpdateCompanyParams {
   recordId: string
-  properties: Record<string, any>
+  properties: Record<string, unknown>
 }
 
 export interface DeleteCompanyParams {
@@ -20,7 +20,7 @@ export interface DeleteCompanyParams {
 
 export interface GetCompanyResult {
   id: string
-  properties: Record<string, any>
+  properties: Record<string, unknown>
 }
 
 export interface CRMClient {

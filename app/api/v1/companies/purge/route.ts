@@ -53,7 +53,7 @@ function buildPurgeSchema(input: PurgeInput) {
   // Add purgePropertyRules to recommendedAction description
   if (input.purgePropertyRules && typeof input.purgePropertyRules === "object") {
     const propertyRules = Object.entries(input.purgePropertyRules)
-      .filter(([_, rule]) => typeof rule === "string" && rule.trim())
+      .filter(([, rule]) => typeof rule === "string" && rule.trim())
       .map(([property, rule]) => `${property}: ${rule}`)
       .join(", ")
 
@@ -149,13 +149,14 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    let {
+    const {
       company,
-      purgeRules,
-      purgePropertyRules,
       deleteRecord = false,
       recordId
     } = body
+
+    let purgeRules = body.purgeRules
+    let purgePropertyRules = body.purgePropertyRules
 
     if (!company || typeof company !== "object") {
       return NextResponse.json(

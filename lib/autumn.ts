@@ -27,8 +27,8 @@ export async function checkFeatureAccess(userId: string, featureId: string): Pro
     const { data } = response
 
     // Autumn API uses 'balance' for remaining credits and 'included_usage' for limit
-    const remaining = (data as any)?.balance ?? undefined
-    const limit = (data as any)?.included_usage ?? undefined
+    const remaining = (data as {balance?: number})?.balance ?? undefined
+    const limit = (data as {included_usage?: number})?.included_usage ?? undefined
 
     return {
       allowed: data?.allowed ?? false,

@@ -190,7 +190,7 @@ function buildMergeFieldSchema(input: MergeFieldInput) {
   // Add mergePropertyRules to primaryRecordPropertiesToUpdate description
   if (input.mergePropertyRules && typeof input.mergePropertyRules === "object") {
     const propertyRules = Object.entries(input.mergePropertyRules)
-      .filter(([_, rule]) => typeof rule === "string" && rule.trim())
+      .filter(([, rule]) => typeof rule === "string" && rule.trim())
       .map(([property, rule]) => `${property}: ${rule}`)
       .join(", ")
 
@@ -286,15 +286,16 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    let {
+    const {
       company,
       recordId,
-      duplicateRules,
-      primaryRules,
-      mergeRules,
-      mergePropertyRules,
       mergeRecord = false
     } = body
+
+    let duplicateRules = body.duplicateRules
+    let primaryRules = body.primaryRules
+    let mergeRules = body.mergeRules
+    let mergePropertyRules = body.mergePropertyRules
 
     if (!company || typeof company !== "object") {
       return NextResponse.json(
@@ -336,11 +337,22 @@ export async function POST(req: NextRequest) {
       )
     }
 
+    interface AIUsage {
+      inputTokens: number
+      outputTokens: number
+      reasoningTokens: number
+      totalTokens: number
+    }
+
     // Track total AI usage across all steps
-    const totalAiUsage = {
-      step1DuplicateSearch: null as any,
-      step2MergeDecision: null as any,
-      step3FieldMerge: null as any
+    const totalAiUsage: {
+      step1DuplicateSearch: AIUsage | null
+      step2MergeDecision: AIUsage | null
+      step3FieldMerge: AIUsage | null
+    } = {
+      step1DuplicateSearch: null,
+      step2MergeDecision: null,
+      step3FieldMerge: null
     }
 
     // STEP 1: Generate duplicate search filters
@@ -402,9 +414,18 @@ export async function POST(req: NextRequest) {
     // STEP 2: Search for duplicates in CRM
     // Clean filters: HubSpot requires value and values to be mutually exclusive
     // Remove null values to avoid "mutually exclusive" error
-    const cleanedFilterGroups = duplicateSearch.filterGroups.map((group: any) => ({
-      filters: group.filters.map((filter: any) => {
-        const cleanedFilter: any = {
+    interface FilterGroup {
+      filters: Array<{
+        propertyName: string
+        operator: string
+        value?: string | null
+        values?: string[] | null
+      }>
+    }
+
+    const cleanedFilterGroups = duplicateSearch.filterGroups.map((group: FilterGroup) => ({
+      filters: group.filters.map((filter) => {
+        const cleanedFilter: Record<string, unknown> = {
           propertyName: filter.propertyName,
           operator: filter.operator
         }
@@ -459,7 +480,11 @@ export async function POST(req: NextRequest) {
     const duplicates = searchResults.results || []
 
     // Filter out the current record from duplicates
-    const otherDuplicates = duplicates.filter((dup: any) => dup.id !== recordId)
+    interface DuplicateRecord {
+      id: string
+      [key: string]: unknown
+    }
+    const otherDuplicates = (duplicates as DuplicateRecord[]).filter((dup) => dup.id !== recordId)
 
     // If no duplicates found (or only found self), return early
     if (otherDuplicates.length === 0) {

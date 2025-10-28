@@ -158,7 +158,7 @@ function buildDynamicSchema(input: CompanyInput) {
   const providedProperties = Object.keys(input.company)
 
   // Filter cleanedCompany properties to only include provided ones
-  const filteredCleanedProperties: Record<string, any> = {}
+  const filteredCleanedProperties: Record<string, unknown> = {}
   for (const key of providedProperties) {
     if (schema.properties.cleanedCompany.properties[key]) {
       filteredCleanedProperties[key] = schema.properties.cleanedCompany.properties[key]
@@ -170,27 +170,29 @@ function buildDynamicSchema(input: CompanyInput) {
   )
 
   // Filter reasoning properties to only include provided ones
-  const filteredReasoningProperties: Record<string, any> = {}
+  const filteredReasoningProperties: Record<string, unknown> = {}
+  const reasoningProps = BASE_SCHEMA.properties.reasoning.properties as Record<string, unknown>
   for (const key of providedProperties) {
-    if (BASE_SCHEMA.properties.reasoning.properties[key]) {
-      filteredReasoningProperties[key] = BASE_SCHEMA.properties.reasoning.properties[key]
+    if (reasoningProps[key]) {
+      filteredReasoningProperties[key] = reasoningProps[key]
     }
   }
   schema.properties.reasoning.properties = filteredReasoningProperties
   schema.properties.reasoning.required = providedProperties.filter(
-    key => BASE_SCHEMA.properties.reasoning.properties[key]
+    key => reasoningProps[key]
   )
 
   // Filter confidence properties to only include provided ones
-  const filteredConfidenceProperties: Record<string, any> = {}
+  const filteredConfidenceProperties: Record<string, unknown> = {}
+  const confidenceProps = BASE_SCHEMA.properties.confidence.properties as Record<string, unknown>
   for (const key of providedProperties) {
-    if (BASE_SCHEMA.properties.confidence.properties[key]) {
-      filteredConfidenceProperties[key] = BASE_SCHEMA.properties.confidence.properties[key]
+    if (confidenceProps[key]) {
+      filteredConfidenceProperties[key] = confidenceProps[key]
     }
   }
   schema.properties.confidence.properties = filteredConfidenceProperties
   schema.properties.confidence.required = providedProperties.filter(
-    key => BASE_SCHEMA.properties.confidence.properties[key]
+    key => confidenceProps[key]
   )
 
   // Update top-level description with cleanRules if provided
@@ -277,7 +279,7 @@ export async function POST(req: NextRequest) {
     // Validate CRM integration requirements BEFORE calling AI
     if (updateRecord) {
       const recordIdValidation = validateRecordId(recordId)
-      if (!recordIdValidation.valid) {
+      if (!recordIdValidation.valid || !recordId) {
         return NextResponse.json(
           { error: `Invalid recordId: ${recordIdValidation.error}` },
           { status: 400 }
@@ -339,6 +341,13 @@ export async function POST(req: NextRequest) {
     }
 
     userId = keyRecord.user_id
+
+    if (!userId) {
+      return NextResponse.json(
+        { error: "Invalid user ID" },
+        { status: 401 }
+      )
+    }
 
     // Check rate limits BEFORE doing anything else
     const rateLimitResult = await checkRateLimit(userId, "clean-endpoint")
@@ -409,7 +418,7 @@ export async function POST(req: NextRequest) {
           const existingProperties = new Set(Object.keys(existingCompany.properties))
 
           // Extract cleaned properties from OpenAI response and compare with original
-          const properties: Record<string, any> = {}
+          const properties: Record<string, unknown> = {}
           if (cleanedData.cleanedCompany && typeof cleanedData.cleanedCompany === 'object') {
             for (const [key, cleanedValue] of Object.entries(cleanedData.cleanedCompany)) {
               // Get the original value from the input company object

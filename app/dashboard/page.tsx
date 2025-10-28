@@ -4,7 +4,7 @@ import { useEffect, useState } from "react"
 import { createClient } from "@/lib/supabase/client"
 import { useRouter } from "next/navigation"
 import { PricingTable } from "autumn-js/react"
-import type { User } from "@supabase/supabase-js"
+import type { User as SupabaseUser } from "@supabase/supabase-js"
 
 interface ApiKey {
   id: string
@@ -14,7 +14,7 @@ interface ApiKey {
   createdAt: string
 }
 
-interface User {
+interface UserData {
   credits: number
   email: string
 }
@@ -23,8 +23,8 @@ export default function DashboardPage() {
   const supabase = createClient()
   const router = useRouter()
   const [apiKeys, setApiKeys] = useState<ApiKey[]>([])
-  const [user, setUser] = useState<User | null>(null)
-  const [userData, setUserData] = useState<{credits: number, email: string} | null>(null)
+  const [user, setUser] = useState<SupabaseUser | null>(null)
+  const [userData, setUserData] = useState<UserData | null>(null)
   const [newKeyName, setNewKeyName] = useState("")
   const [loading, setLoading] = useState(false)
   const [showNewKeyForm, setShowNewKeyForm] = useState(false)

@@ -23,5 +23,14 @@
     }
   },
   "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
-  "exclude": ["node_modules"]
+  "exclude": [
+    "node_modules",
+    "supabase",
+    "test-autumn.ts",
+    "test-autumn-api.ts",
+    "assign-product.ts",
+    "get-api-key.ts",
+    "fix-all-errors.ts",
+    "check-autumn-config.ts"
+  ]
 }

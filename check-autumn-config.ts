@@ -42,8 +42,9 @@ async function checkConfig() {
       console.log("   → Checkout URL was provided in previous output")
     } else if (checkResult.data && checkResult.data.allowed) {
       console.log("\n✅ ACCESS GRANTED!")
-      console.log(`   Remaining: ${checkResult.data.remaining ?? "N/A"}`)
-      console.log(`   Limit: ${checkResult.data.limit ?? "N/A"}`)
+      const data = checkResult.data as { balance?: number; included_usage?: number }
+      console.log(`   Remaining: ${data.balance ?? "N/A"}`)
+      console.log(`   Limit: ${data.included_usage ?? "N/A"}`)
       console.log("\n🎉 You can now test the API!")
     }
 

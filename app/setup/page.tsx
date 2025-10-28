@@ -46,8 +46,8 @@ export default function SetupPage() {
                   </a>
                 </li>
                 <li>Sign in or create a new account</li>
-                <li>Click "New Project"</li>
-                <li>Fill in your project details and click "Create new project"</li>
+                <li>Click &ldquo;New Project&rdquo;</li>
+                <li>Fill in your project details and click &ldquo;Create new project&rdquo;</li>
                 <li>Wait for your project to be set up (this may take a minute)</li>
               </ol>
             </div>
@@ -64,7 +64,7 @@ export default function SetupPage() {
                   )
                 </li>
                 <li>
-                  Copy the <strong>anon/public key</strong> (under "Project API keys")
+                  Copy the <strong>anon/public key</strong> (under &ldquo;Project API keys&rdquo;)
                 </li>
               </ol>
             </div>
@@ -97,9 +97,9 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key-here`}
             </div>
 
             <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-              <p className="text-green-900 font-semibold mb-2">✅ You're all set!</p>
+              <p className="text-green-900 font-semibold mb-2">✅ You&apos;re all set!</p>
               <p className="text-green-800">
-                Once configured, you'll be able to sign up, sign in, and use all features of the
+                Once configured, you&apos;ll be able to sign up, sign in, and use all features of the
                 application.
               </p>
             </div>

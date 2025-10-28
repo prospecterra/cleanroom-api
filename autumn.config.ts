@@ -16,7 +16,6 @@ export const apiCredits = feature({
 export const starter = product({
 	id: "starter",
 	name: "Starter",
-	description: "$99/month - 100 API credits included",
 	items: [
 		priceItem({
 			price: 99, // $99.00 (Autumn uses dollars, not cents)
